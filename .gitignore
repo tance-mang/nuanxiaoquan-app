@@ -13,3 +13,45 @@ Thumbs.db
 
 # Claude 缓存
 .claude/
+
+
+# ========== 新增的敏感信息规则 ==========
+# 1. 环境变量文件（存API Key、密码的关键文件！）
+.env
+.env.*
+.env.local
+.env.production
+.env.development
+.envrc
+
+# 2. 配置文件（如果你的项目里有带密钥的config.json、config.js这类）
+config.json
+config.js
+secrets.json
+secrets.js
+*.secret
+
+# 3. 日志和临时文件（可能会泄露运行信息）
+*.log
+logs/
+*.tmp
+*.temp
+
+# 4. 爬虫脚本/测试脚本（如果是单独的文件，避免误传）
+# 比如你的 create_doc.js/gen_docx.js 是生成文档的，没问题；但如果有带敏感信息的爬虫脚本，可以单独忽略：
+# crawler_*.js
+# test_api.js
+
+# 5. 数据库文件/缓存（如果项目里有本地sqlite等）
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+
+# 6. 其他常见敏感/大文件
+*.pem       # 私钥文件
+*.key       # 密钥文件
+*.p12
+*.pfx
+*.cer
+*.crt
