@@ -8,10 +8,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart'; // 屏幕尺寸适配库，让手机大小不同显示一样
 import 'package:get/get.dart';                               // GetX：状态管理 + 路由跳转 + 依赖注入 三合一
 import 'package:shared_preferences/shared_preferences.dart'; // 本地轻量存储，存主题/token等小数据
-import 'themes/app_themes.dart';       // 我们自己写的主题颜色配置
-import 'services/api_service.dart';    // 和后端服务器通信的工具
-import 'screens/splash_screen.dart';   // 启动页（开屏动画）
-import 'controllers/app_controller.dart'; // 全局控制器（主题切换等）
+import 'themes/app_themes.dart';
+import 'services/api_service.dart';
+import 'screens/splash_screen.dart';
+import 'screens/login_screen.dart';
+import 'screens/main_screen.dart';
+import 'screens/xiaonuan_screen.dart';
+import 'screens/memo_screen.dart';
+import 'screens/accounting_screen.dart';
+import 'screens/room_detail_screen.dart';
+import 'screens/settings_screen.dart';
+import 'screens/level_detail_screen.dart';
+import 'screens/simple_content_screen.dart';
+import 'screens/feedback_screen.dart';
+import 'screens/warmcare_screen.dart';
+import 'controllers/app_controller.dart';
+import 'screens/study_room_screen.dart';
 
 // ============================================================
 // main函数：程序的起点，async 表示里面有需要等待的操作
@@ -23,11 +35,10 @@ void main() async {
   // 初始化 API 服务（设置服务器地址、网络配置等）
   await ApiService().init();
 
-  // 把全局控制器注入到 GetX 的依赖容器里
-  // 这样 APP 里任何地方都能用 Get.find<AppController>() 取到它
   Get.put(AppController());
+  // 提前注册，保证全局光影进度条可在任意页面读取计时状态
+  Get.put(StudyRoomController(), permanent: true);
 
-  // 启动 APP，把 WarmCircleApp 作为根组件
   runApp(const WarmCircleApp());
 }
 
@@ -44,8 +55,8 @@ class WarmCircleApp extends StatefulWidget {
 }
 
 class _WarmCircleAppState extends State<WarmCircleApp> {
-  // 当前主题名称，默认是简约灰
-  String _currentTheme = AppThemes.defaultTheme;
+  // 当前主题名称，默认是温柔粉
+  String _currentTheme = AppThemes.pinkTheme;
 
   @override
   void initState() {
@@ -56,7 +67,7 @@ class _WarmCircleAppState extends State<WarmCircleApp> {
   // 从本地存储读取上次用户选择的主题
   Future<void> _loadSavedTheme() async {
     final prefs = await SharedPreferences.getInstance();
-    final savedTheme = prefs.getString('app_theme') ?? AppThemes.defaultTheme;
+    final savedTheme = prefs.getString('app_theme') ?? AppThemes.pinkTheme;
     setState(() {
       _currentTheme = savedTheme;
     });
@@ -84,9 +95,45 @@ class _WarmCircleAppState extends State<WarmCircleApp> {
         return GetMaterialApp(
           title: '暖小圈',
           debugShowCheckedModeBanner: false, // 去掉右上角 DEBUG 红色标签
-          theme: AppThemes.getTheme(_currentTheme), // 应用当前主题
-          home: const SplashScreen(),              // 首先显示启动页
-          locale: const Locale('zh', 'CN'),        // 设置中文语言
+          theme: AppThemes.getTheme(_currentTheme),
+          home: const MainScreen(),
+          locale: const Locale('zh', 'CN'),
+          getPages: [
+            GetPage(name: '/login',          page: () => const LoginScreen()),
+            GetPage(name: '/main',           page: () => const MainScreen()),
+            GetPage(name: '/ai-chat',        page: () => const XiaoNuanScreen()),
+            GetPage(name: '/create-plan',    page: () => const XiaoNuanScreen()),
+            GetPage(name: '/memo',           page: () => const MemoScreen()),
+            GetPage(name: '/accounting',     page: () => const AccountingScreen()),
+            GetPage(name: '/room-detail',    page: () => const RoomDetailScreen()),
+            GetPage(name: '/settings',       page: () => const SettingsScreen()),
+            GetPage(name: '/theme-settings', page: () => const SettingsScreen()),
+            GetPage(name: '/ai-settings',    page: () => const SettingsScreen()),
+            GetPage(name: '/privacy-settings', page: () => const SettingsScreen()),
+            GetPage(name: '/level-detail',   page: () => const LevelDetailScreen()),
+            GetPage(name: '/my-resources',   page: () => const SimpleContentScreen(
+              title: '我的发布',
+              emptyIcon: Icons.upload_file_outlined,
+              emptyText: '还没有发布任何内容',
+            )),
+            GetPage(name: '/my-collects',    page: () => const SimpleContentScreen(
+              title: '我的收藏',
+              emptyIcon: Icons.bookmark_outline,
+              emptyText: '还没有收藏内容',
+            )),
+            GetPage(name: '/my-likes',       page: () => const SimpleContentScreen(
+              title: '我的点赞',
+              emptyIcon: Icons.thumb_up_outlined,
+              emptyText: '还没有点赞过内容',
+            )),
+            GetPage(name: '/recycle-bin',    page: () => const SimpleContentScreen(
+              title: '回收站',
+              emptyIcon: Icons.restore_from_trash_outlined,
+              emptyText: '回收站为空',
+            )),
+            GetPage(name: '/feedback',       page: () => const FeedbackScreen()),
+            GetPage(name: '/warmcare',       page: () => const WarmCareScreen()),
+          ],
           // 把 changeTheme 方法存到全局控制器，方便其他页面调用
           builder: (context, widget) {
             // 找到全局控制器，注册主题切换回调

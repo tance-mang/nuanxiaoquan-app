@@ -24,11 +24,33 @@ class StudyRoomController extends GetxController {
   // 是否正在计时
   final RxBool isRunning = false.obs;
 
-  // 剩余秒数（默认25分钟 = 1500秒）
+  // 本次专注设定总时长（秒），默认25分钟
+  final RxInt focusTotalDuration = 1500.obs;
+
+  // 剩余秒数
   final RxInt remainingSeconds = 1500.obs;
 
-  // 当前专注总时长（已完成的秒数）
+  // 累计专注秒数（跨多轮）
   final RxInt totalFocusSeconds = 0.obs;
+
+  // 全局光影条进度 0.0~1.0
+  double get focusProgress {
+    final total = focusTotalDuration.value;
+    if (total <= 0) return 0.0;
+    return (1.0 - remainingSeconds.value / total).clamp(0.0, 1.0);
+  }
+
+  // 是否应显示全局光影条
+  bool get showFocusBar =>
+      isRunning.value ||
+      (remainingSeconds.value < focusTotalDuration.value && remainingSeconds.value > 0);
+
+  // 设置专注时长（仅在非计时中时生效）
+  void setDuration(int seconds) {
+    if (isRunning.value) return;
+    focusTotalDuration.value = seconds;
+    remainingSeconds.value = seconds;
+  }
 
   // 是否有活跃的房间（决定是否显示迷你挂件）
   final RxBool hasActiveRoom = false.obs;
@@ -66,7 +88,7 @@ class StudyRoomController extends GetxController {
   void stopTimer() {
     _timer?.cancel();
     isRunning.value = false;
-    remainingSeconds.value = 1500; // 重置为25分钟
+    remainingSeconds.value = focusTotalDuration.value; // 重置为当前设定时长
   }
 
   // 计时完成回调
@@ -160,7 +182,43 @@ class StudyRoomScreen extends StatelessWidget {
             '暖圈钟',
             style: TextStyle(fontSize: 14.sp, color: Colors.grey[600]),
           ),
-          SizedBox(height: 16.h),
+          SizedBox(height: 10.h),
+
+          // 时长选择（仅停止时显示）
+          if (!ctrl.isRunning.value)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [25, 30, 45, 60].map((min) {
+                final primary = Theme.of(context).primaryColor;
+                final isSelected = ctrl.focusTotalDuration.value == min * 60;
+                return GestureDetector(
+                  onTap: () => ctrl.setDuration(min * 60),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 160),
+                    margin: EdgeInsets.symmetric(horizontal: 4.w),
+                    padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 5.h),
+                    decoration: BoxDecoration(
+                      color: isSelected ? primary.withOpacity(0.1) : Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(14.r),
+                      border: Border.all(
+                        color: isSelected ? primary : Colors.grey.shade300,
+                        width: isSelected ? 1.5 : 1,
+                      ),
+                    ),
+                    child: Text(
+                      '$min分',
+                      style: TextStyle(
+                        fontSize: 12.sp,
+                        color: isSelected ? primary : Colors.grey[600],
+                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+
+          SizedBox(height: 12.h),
 
           // 大数字计时显示
           Text(

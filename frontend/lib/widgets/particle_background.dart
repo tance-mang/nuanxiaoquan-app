@@ -145,7 +145,7 @@ class _ParticleBackgroundState extends State<ParticleBackground>
         if (p.x > 1) p.x = 0.0;
       }
     }
-    _particles.removeAll(toRemove);
+    _particles.removeWhere((p) => toRemove.contains(p));
 
     // 补充漂浮粒子（保持数量稳定）
     final floatingCount = _particles.where((p) => !p.isBurst).length;

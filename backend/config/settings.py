@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     MYSQL_HOST: str = "localhost"
     MYSQL_PORT: int = 3306
     MYSQL_USER: str = "root"
-    MYSQL_PASSWORD: str = "your_password"
+    MYSQL_PASSWORD: str = "123456"
     MYSQL_DATABASE: str = "warmcircle"
     
     # Redis配置

@@ -71,12 +71,19 @@ class AppThemes {
       appBarTheme: AppBarTheme(
         backgroundColor: Colors.white,
         foregroundColor: const Color(0xFF333333),
-        elevation: 0,             // 无阴影，扁平化设计
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
+        shadowColor: Colors.transparent,
         centerTitle: true,
         titleTextStyle: const TextStyle(
           color: Color(0xFF333333),
           fontSize: 18,
           fontWeight: FontWeight.w600,
+        ),
+        // 底部细线，随主题色变化，区分标题栏和内容区域
+        shape: Border(
+          bottom: BorderSide(color: primary.withOpacity(0.18), width: 1.0),
         ),
       ),
 

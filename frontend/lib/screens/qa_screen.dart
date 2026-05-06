@@ -47,7 +47,7 @@ class _QAScreenState extends State<QAScreen> with SingleTickerProviderStateMixin
         '/qa/list?category=${Uri.encodeComponent(_selectedCategory)}'
       );
       setState(() {
-        _questions = result['content'] ?? [];
+        _questions = result?['content'] ?? [];
         _isLoading = false;
       });
     } catch (e) {
@@ -274,7 +274,7 @@ class _QAScreenState extends State<QAScreen> with SingleTickerProviderStateMixin
             onPressed: () async {
               if (contentCtrl.text.trim().isEmpty) return;
               try {
-                await _apiService.post('/qa/ask', {
+                await _apiService.post('/qa/ask', body: {
                   'content': contentCtrl.text.trim(),
                   'category': selectedCat,
                 });
@@ -319,7 +319,7 @@ class _QAScreenState extends State<QAScreen> with SingleTickerProviderStateMixin
             onPressed: () async {
               if (contentCtrl.text.trim().isEmpty) return;
               try {
-                await _apiService.post('/qa/reply', {
+                await _apiService.post('/qa/reply', body: {
                   'parentId': postId,
                   'content': contentCtrl.text.trim(),
                 });
@@ -365,8 +365,8 @@ class _QADetailPageState extends State<_QADetailPage> {
     try {
       final result = await _apiService.get('/qa/detail/${widget.questionId}');
       setState(() {
-        _question = result['question'];
-        _replies = result['replies'] ?? [];
+        _question = result?['question'];
+        _replies = result?['replies'] ?? [];
         _isLoading = false;
       });
     } catch (e) {

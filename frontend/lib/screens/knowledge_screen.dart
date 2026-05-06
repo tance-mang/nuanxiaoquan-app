@@ -1,27 +1,67 @@
-// ============================================================
-// 文件：screens/knowledge_screen.dart
-// 作用：知识小馆页面（三个 Tab：语录 / 资源 / 答疑）
-//
-// 答疑 Tab 说明：
-//   · 放在第三个 Tab，不明显但能找到
-//   · 普通用户：可提问、可点赞
-//   · 管理员（开发者登录）：自动显示"官方回复"按钮，普通用户不可见
-// ============================================================
-
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import '../services/api_service.dart';
-import '../widgets/resource_card.dart';
-import '../widgets/quote_card.dart';
-import 'qa_screen.dart';
+import '../controllers/app_controller.dart';
+import '../widgets/tap_scale.dart';
 
 class KnowledgeScreen extends StatefulWidget {
   const KnowledgeScreen({Key? key}) : super(key: key);
-
   @override
   State<KnowledgeScreen> createState() => _KnowledgeScreenState();
 }
+
+// ── 预置暖语（带分类）────────────────────────────────────────
+const _sampleQuotes = [
+  {'id':1,'content':'你不需要很厉害才能开始，但你需要开始才能很厉害。','author':'暖小圈','category':'励志','isPreset':true},
+  {'id':2,'content':'每一个你觉得努力撑不下去的今天，都是明天更强大的自己的起点。','author':'暖小圈','category':'励志','isPreset':true},
+  {'id':3,'content':'慢慢来，比较快。你专注的样子，已经很美了。','author':'暖小圈','category':'治愈','isPreset':true},
+  {'id':4,'content':'学习不是赛跑，是修行。每天进步一点点，岁月自然给你答案。','author':'暖小圈','category':'学习','isPreset':true},
+  {'id':5,'content':'考试失利不是终点，只是提醒你哪里还有空间可以生长。','author':'暖小圈','category':'学习','isPreset':true},
+  {'id':6,'content':'不必羡慕别人的进度，你走的每一步都算数。','author':'暖小圈','category':'治愈','isPreset':true},
+  {'id':7,'content':'休息也是一种努力，允许自己偶尔停下来喘口气。','author':'暖小圈','category':'放松','isPreset':true},
+  {'id':8,'content':'今天的困惑，是明天顿悟的铺垫。','author':'暖小圈','category':'励志','isPreset':true},
+  {'id':9,'content':'每一次你选择继续，都是在为未来的自己铺路。','author':'暖小圈','category':'坚持','isPreset':true},
+];
+
+// ── 预置存知（带分类）────────────────────────────────────────
+const _sampleResources = [
+  {
+    'id':1,'title':'备考心得｜考研数学高效刷题法',
+    'content':'建议先看教材把基础打牢，再刷660+汤家凤1800。错题要二刷三刷，专项练习配合真题。每天2小时，三个月即可见效。重要：错题本一定要整理！',
+    'category':'考研','isPreset':true,
+  },
+  {
+    'id':2,'title':'计算机学习路线｜从零到会写项目',
+    'content':'第一步：学Python基础语法（2周）→ 第二步：数据结构与算法（1个月）→ 第三步：选方向（前端/后端/算法）→ 第四步：做项目。推荐资源：CS61A、LeetCode、B站黑马程序员。',
+    'category':'计算机','isPreset':true,
+  },
+  {
+    'id':3,'title':'公考行测｜数量关系秒杀技巧',
+    'content':'数量关系不用全做，先跳过难题做言语和资料。核心技巧：① 代入法秒杀选择题 ② 整除特性判断 ③ 比例法处理工程问题。每天练15道，30天提升明显。',
+    'category':'公考','isPreset':true,
+  },
+  {
+    'id':4,'title':'大学英语四级｜阅读理解拿分秘诀',
+    'content':'四级阅读核心：先看题目定位关键词，再回文章找细节。长句拆解法：找到主干（主谓宾），定语从句单独理解。每天1篇精读+2篇泛读，六周必过。',
+    'category':'大学课程','isPreset':true,
+  },
+  {
+    'id':5,'title':'网络安全入门｜渗透测试学习路线',
+    'content':'基础：Linux+Python+网络协议 → 中级：Kali工具使用、CTF题目练习 → 进阶：漏洞挖掘、代码审计。推荐平台：Hack The Box、攻防世界、BUUCTF。',
+    'category':'网络安全','isPreset':true,
+  },
+  {
+    'id':6,'title':'职场新人｜高效沟通的5个技巧',
+    'content':'① 先说结论再说过程 ② 用数据支撑观点 ③ 遇到分歧先共情再讲理 ④ 邮件三段式：背景+问题+方案 ⑤ 会议前准备好1-3个关键点。',
+    'category':'职场','isPreset':true,
+  },
+  {
+    'id':7,'title':'中小学｜数学思维培养方法',
+    'content':'数学思维三步走：① 看懂题目（找关键条件）② 想解题思路（联系已学知识）③ 回验结果。每天练习一道开放性题目，鼓励多种解法，比反复刷题效果好10倍。',
+    'category':'中小学','isPreset':true,
+  },
+];
 
 class _KnowledgeScreenState extends State<KnowledgeScreen>
     with SingleTickerProviderStateMixin {
@@ -33,41 +73,78 @@ class _KnowledgeScreenState extends State<KnowledgeScreen>
   bool _quotesLoading = true;
   bool _resourcesLoading = true;
 
+  final _quoteSearchCtrl = TextEditingController();
+  final _resSearchCtrl = TextEditingController();
+  String _quoteQuery = '';
+  String _resQuery = '';
+
+  // 暖语分类
+  final _quoteCats = ['全部', '励志', '治愈', '学习', '坚持', '放松'];
+  String _selectedQuoteCat = '全部';
+
+  // 存知分类
+  final _resCats = ['全部', '中小学', '大学课程', '计算机', '网络安全', '考研', '公考', '语言', '职场', '自我成长'];
+  String _selectedResCat = '全部';
+
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 2, vsync: this);
+    _quoteSearchCtrl.addListener(() => setState(() => _quoteQuery = _quoteSearchCtrl.text));
+    _resSearchCtrl.addListener(() => setState(() => _resQuery = _resSearchCtrl.text));
     _loadQuotes();
     _loadResources();
   }
 
+  // ── 过滤逻辑（本地预置数据也真正过滤）───────────────────
+
+  List<dynamic> get _displayQuotes {
+    final base = _quotes.isEmpty ? List<dynamic>.from(_sampleQuotes) : _quotes;
+    return base.where((q) {
+      final matchCat = _selectedQuoteCat == '全部' || (q['category'] ?? '') == _selectedQuoteCat;
+      final matchSearch = _quoteQuery.isEmpty || (q['content'] ?? '').toString().contains(_quoteQuery);
+      return matchCat && matchSearch;
+    }).toList();
+  }
+
+  List<dynamic> get _displayResources {
+    final base = _resources.isEmpty ? List<dynamic>.from(_sampleResources) : _resources;
+    return base.where((r) {
+      final matchCat = _selectedResCat == '全部' || (r['category'] ?? '') == _selectedResCat;
+      final matchSearch = _resQuery.isEmpty ||
+          (r['title'] ?? '').toString().contains(_resQuery) ||
+          (r['content'] ?? '').toString().contains(_resQuery);
+      return matchCat && matchSearch;
+    }).toList();
+  }
+
   Future<void> _loadQuotes() async {
+    setState(() => _quotesLoading = true);
     try {
-      final result = await _apiService.get('/quote/list?limit=20');
+      final result = await _apiService.get('/quote/list?limit=50');
       setState(() {
-        _quotes = result is List ? result : (result['content'] ?? []);
+        _quotes = result == null ? [] : (result is List ? result : (result['content'] ?? []));
         _quotesLoading = false;
       });
-    } catch (_) {
-      setState(() => _quotesLoading = false);
-    }
+    } catch (_) { setState(() => _quotesLoading = false); }
   }
 
   Future<void> _loadResources() async {
+    setState(() => _resourcesLoading = true);
     try {
-      final result = await _apiService.get('/resource/list?limit=20');
+      final result = await _apiService.get('/resource/list?limit=50');
       setState(() {
-        _resources = result is List ? result : (result['content'] ?? []);
+        _resources = result == null ? [] : (result is List ? result : (result['content'] ?? []));
         _resourcesLoading = false;
       });
-    } catch (_) {
-      setState(() => _resourcesLoading = false);
-    }
+    } catch (_) { setState(() => _resourcesLoading = false); }
   }
 
   @override
   void dispose() {
     _tabController.dispose();
+    _quoteSearchCtrl.dispose();
+    _resSearchCtrl.dispose();
     super.dispose();
   }
 
@@ -75,8 +152,20 @@ class _KnowledgeScreenState extends State<KnowledgeScreen>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        title: Text('知识小馆', style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.w600)),
+        title: Row(mainAxisSize: MainAxisSize.min, children: [
+          Container(
+            width: 26.w, height: 26.w,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(colors: [theme.primaryColor, theme.primaryColor.withOpacity(0.7)]),
+            ),
+            child: Center(child: Text('知', style: TextStyle(color: Colors.white, fontSize: 12.sp, fontWeight: FontWeight.bold))),
+          ),
+          SizedBox(width: 8.w),
+          Text('知识小馆', style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.w600)),
+        ]),
         elevation: 0,
         bottom: TabBar(
           controller: _tabController,
@@ -84,45 +173,312 @@ class _KnowledgeScreenState extends State<KnowledgeScreen>
           indicatorWeight: 3,
           labelColor: theme.primaryColor,
           unselectedLabelColor: Colors.grey[500],
-          labelStyle: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w600),
+          labelStyle: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w700),
+          unselectedLabelStyle: TextStyle(fontSize: 15.sp),
           tabs: const [
-            Tab(text: '干货语录'),
-            Tab(text: '学习资源'),
-            Tab(text: '答疑'),
+            Tab(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Text('暖语'), Text('摘抄短句，自愈前行', style: TextStyle(fontSize: 9, fontWeight: FontWeight.normal)),
+            ])),
+            Tab(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Text('存知'), Text('记录所学，沉淀成长', style: TextStyle(fontSize: 9, fontWeight: FontWeight.normal)),
+            ])),
           ],
         ),
       ),
       body: TabBarView(
         controller: _tabController,
-        children: [
-          // Tab1: 语录列表
-          _quotesLoading
-              ? const Center(child: CircularProgressIndicator())
-              : RefreshIndicator(
-                  onRefresh: _loadQuotes,
-                  child: ListView.builder(
-                    padding: EdgeInsets.all(12.w),
-                    itemCount: _quotes.length,
-                    itemBuilder: (ctx, i) => QuoteCard(quote: _quotes[i]),
-                  ),
-                ),
+        children: [_buildQuotesTab(theme), _buildResourcesTab(theme)],
+      ),
+      floatingActionButton: _buildFab(theme),
+    );
+  }
 
-          // Tab2: 资源列表
-          _resourcesLoading
-              ? const Center(child: CircularProgressIndicator())
-              : RefreshIndicator(
-                  onRefresh: _loadResources,
-                  child: ListView.builder(
-                    padding: EdgeInsets.all(12.w),
-                    itemCount: _resources.length,
-                    itemBuilder: (ctx, i) => ResourceCard(resource: _resources[i]),
-                  ),
-                ),
+  Widget _buildFab(ThemeData theme) {
+    return AnimatedBuilder(
+      animation: _tabController,
+      builder: (_, __) {
+        final isQuotes = _tabController.index == 0;
+        return TapScale(
+          onTap: isQuotes ? _showPostQuoteDialog : _showPostResourceDialog,
+          child: FloatingActionButton.extended(
+            onPressed: null,
+            backgroundColor: theme.primaryColor,
+            icon: Icon(isQuotes ? Icons.format_quote : Icons.lightbulb_outline, size: 18.sp),
+            label: Text(isQuotes ? '发布暖句' : '发布存学', style: TextStyle(fontSize: 13.sp)),
+          ),
+        );
+      },
+    );
+  }
 
-          // Tab3: 答疑（嵌入 QAScreen）
-          const QAScreen(),
-        ],
+  // ══ 暖语 Tab ══════════════════════════════════════════════
+  Widget _buildQuotesTab(ThemeData theme) {
+    return Column(children: [
+      _buildSearchBar(_quoteSearchCtrl, '搜索暖句关键词…', theme),
+      _buildHorizontalCats(_quoteCats, _selectedQuoteCat, (cat) => setState(() => _selectedQuoteCat = cat), theme),
+      Expanded(
+        child: _quotesLoading
+            ? const Center(child: CircularProgressIndicator())
+            : RefreshIndicator(
+                onRefresh: _loadQuotes,
+                child: _displayQuotes.isEmpty
+                    ? _buildEmpty('没有找到相关暖句', Icons.format_quote)
+                    : ListView.builder(
+                        padding: EdgeInsets.fromLTRB(16.w, 8.h, 16.w, 80.h),
+                        itemCount: _displayQuotes.length,
+                        itemBuilder: (ctx, i) => _buildQuoteCard(_displayQuotes[i], theme),
+                      ),
+              ),
+      ),
+    ]);
+  }
+
+  Widget _buildQuoteCard(Map<dynamic, dynamic> q, ThemeData theme) {
+    final palette = [
+      [const Color(0xFFFFF0F5), const Color(0xFFFFB6C8)],
+      [const Color(0xFFF0F4FF), const Color(0xFFB6C8FF)],
+      [const Color(0xFFF5F0FF), const Color(0xFFCFB6FF)],
+      [const Color(0xFFF0FFF5), const Color(0xFFB6FFCF)],
+      [const Color(0xFFFFFBF0), const Color(0xFFFFDDB6)],
+    ];
+    final idx = ((q['id'] ?? 0) as num).toInt() % palette.length;
+    final c = palette[idx];
+    final isPreset = q['isPreset'] == true;
+    return TapScale(
+      child: Container(
+        margin: EdgeInsets.only(bottom: 12.h),
+        padding: EdgeInsets.all(18.w),
+        decoration: BoxDecoration(
+          color: c[0], borderRadius: BorderRadius.circular(16.r),
+          border: Border.all(color: c[1].withOpacity(0.5)),
+          boxShadow: [BoxShadow(color: c[1].withOpacity(0.15), blurRadius: 8, offset: const Offset(0, 2))],
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('"', style: TextStyle(fontSize: 36.sp, color: c[1], height: 0.6, fontWeight: FontWeight.bold)),
+          SizedBox(height: 8.h),
+          Text(q['content'] ?? '', style: TextStyle(fontSize: 15.sp, color: const Color(0xFF2D2D2D), height: 1.6, fontWeight: FontWeight.w500)),
+          SizedBox(height: 10.h),
+          Row(children: [
+            if (q['category'] != null)
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
+                decoration: BoxDecoration(color: c[1].withOpacity(0.2), borderRadius: BorderRadius.circular(4.r)),
+                child: Text(q['category'], style: TextStyle(fontSize: 10.sp, color: c[1])),
+              ),
+            if (isPreset) ...[
+              SizedBox(width: 5.w),
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 5.w, vertical: 2.h),
+                decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(4.r)),
+                child: Text('示例', style: TextStyle(fontSize: 9.sp, color: Colors.grey[400])),
+              ),
+            ],
+            const Spacer(),
+            Text(q['author'] ?? q['userNickname'] ?? '暖小圈', style: TextStyle(fontSize: 11.sp, color: Colors.grey[500])),
+          ]),
+        ]),
       ),
     );
+  }
+
+  // ══ 存知 Tab ══════════════════════════════════════════════
+  Widget _buildResourcesTab(ThemeData theme) {
+    return Column(children: [
+      _buildSearchBar(_resSearchCtrl, '搜索学习干货…', theme),
+      _buildHorizontalCats(_resCats, _selectedResCat, (cat) => setState(() => _selectedResCat = cat), theme),
+      Expanded(
+        child: _resourcesLoading
+            ? const Center(child: CircularProgressIndicator())
+            : RefreshIndicator(
+                onRefresh: _loadResources,
+                child: _displayResources.isEmpty
+                    ? _buildEmpty('没有找到相关内容', Icons.school_outlined)
+                    : ListView.builder(
+                        padding: EdgeInsets.fromLTRB(16.w, 4.h, 16.w, 80.h),
+                        itemCount: _displayResources.length,
+                        itemBuilder: (ctx, i) => _buildResourceCard(_displayResources[i], theme),
+                      ),
+              ),
+      ),
+    ]);
+  }
+
+  // ── 通用组件 ──────────────────────────────────────────────
+
+  Widget _buildSearchBar(TextEditingController ctrl, String hint, ThemeData theme) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16.w, 10.h, 16.w, 4.h),
+      child: TextField(
+        controller: ctrl,
+        style: TextStyle(fontSize: 13.sp),
+        decoration: InputDecoration(
+          hintText: hint,
+          hintStyle: TextStyle(fontSize: 13.sp, color: Colors.grey[400]),
+          prefixIcon: Icon(Icons.search, size: 18.sp, color: Colors.grey[400]),
+          suffixIcon: ctrl.text.isNotEmpty
+              ? GestureDetector(onTap: () => ctrl.clear(), child: Icon(Icons.close, size: 16.sp, color: Colors.grey[400]))
+              : null,
+          contentPadding: EdgeInsets.symmetric(vertical: 0, horizontal: 12.w),
+          filled: true, fillColor: Colors.grey.shade100,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(24.r), borderSide: BorderSide.none),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHorizontalCats(List<String> cats, String selected, void Function(String) onTap, ThemeData theme) {
+    return SizedBox(
+      height: 40.h,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding: EdgeInsets.fromLTRB(12.w, 4.h, 12.w, 4.h),
+        itemCount: cats.length,
+        itemBuilder: (ctx, i) {
+          final cat = cats[i];
+          final isSelected = cat == selected;
+          return TapScale(
+            scale: 0.93,
+            onTap: () => onTap(cat),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              margin: EdgeInsets.only(right: 8.w),
+              padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 4.h),
+              decoration: BoxDecoration(
+                color: isSelected ? theme.primaryColor : Colors.white,
+                borderRadius: BorderRadius.circular(20.r),
+                border: Border.all(color: isSelected ? theme.primaryColor : Colors.grey.shade300),
+                boxShadow: isSelected ? [BoxShadow(color: theme.primaryColor.withOpacity(0.25), blurRadius: 6, offset: const Offset(0, 2))] : null,
+              ),
+              child: Text(cat, style: TextStyle(
+                fontSize: 12.sp,
+                color: isSelected ? Colors.white : Colors.grey[600],
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+              )),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildResourceCard(Map<dynamic, dynamic> r, ThemeData theme) {
+    final isPreset = r['isPreset'] == true;
+    return TapScale(
+      child: Container(
+        margin: EdgeInsets.only(bottom: 12.h),
+        padding: EdgeInsets.all(16.w),
+        decoration: BoxDecoration(
+          color: Colors.white, borderRadius: BorderRadius.circular(14.r),
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 2))],
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 2.h),
+              decoration: BoxDecoration(color: theme.primaryColor.withOpacity(0.1), borderRadius: BorderRadius.circular(4.r)),
+              child: Text(r['category'] ?? '学习', style: TextStyle(fontSize: 10.sp, color: theme.primaryColor)),
+            ),
+            if (isPreset) ...[
+              SizedBox(width: 5.w),
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 5.w, vertical: 2.h),
+                decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(4.r)),
+                child: Text('示例', style: TextStyle(fontSize: 9.sp, color: Colors.grey[400])),
+              ),
+            ],
+            const Spacer(),
+            if (r['isAiGenerated'] == true)
+              Row(children: [
+                Icon(Icons.auto_awesome, size: 11.sp, color: Colors.amber[600]),
+                SizedBox(width: 2.w),
+                Text('AI生成', style: TextStyle(fontSize: 10.sp, color: Colors.amber[600])),
+              ]),
+          ]),
+          SizedBox(height: 10.h),
+          if ((r['title'] ?? '').toString().isNotEmpty)
+            Text(r['title'], style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w600, color: const Color(0xFF2D2D2D))),
+          SizedBox(height: 6.h),
+          Text(r['content'] ?? '', style: TextStyle(fontSize: 13.sp, color: Colors.grey[600], height: 1.5), maxLines: 4, overflow: TextOverflow.ellipsis),
+          SizedBox(height: 8.h),
+          Text(r['userNickname'] ?? '暖小圈', style: TextStyle(fontSize: 11.sp, color: Colors.grey[400])),
+        ]),
+      ),
+    );
+  }
+
+  Widget _buildEmpty(String msg, IconData icon) {
+    return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+      Icon(icon, size: 52.sp, color: Colors.grey[200]),
+      SizedBox(height: 16.h),
+      Text(msg, textAlign: TextAlign.center, style: TextStyle(color: Colors.grey[400], fontSize: 14.sp, height: 1.6)),
+    ]));
+  }
+
+  // ── 发布对话框 ────────────────────────────────────────────
+  void _showPostQuoteDialog() {
+    final ctrl = Get.find<AppController>();
+    if (!ctrl.isLoggedIn) { Get.toNamed('/login'); return; }
+    final contentCtrl = TextEditingController();
+    Get.dialog(AlertDialog(
+      title: Row(children: [
+        Icon(Icons.format_quote, color: Theme.of(Get.context!).primaryColor, size: 20.sp),
+        SizedBox(width: 6.w), Text('发布暖句', style: TextStyle(fontSize: 16.sp)),
+      ]),
+      content: TextField(controller: contentCtrl, maxLines: 4, maxLength: 200,
+          decoration: const InputDecoration(hintText: '分享一句治愈的话～', border: OutlineInputBorder())),
+      actions: [
+        TextButton(onPressed: () => Get.back(), child: const Text('取消')),
+        ElevatedButton(onPressed: () async {
+          if (contentCtrl.text.trim().isEmpty) return;
+          try {
+            await _apiService.post('/quote/post', body: {'content': contentCtrl.text.trim()});
+            Get.back();
+            Get.snackbar('发布成功', '你的暖句已发布～', backgroundColor: Colors.green, colorText: Colors.white);
+            _loadQuotes();
+          } catch (_) { Get.snackbar('发布失败', '请稍后重试'); }
+        }, child: const Text('发布')),
+      ],
+    ));
+  }
+
+  void _showPostResourceDialog() {
+    final ctrl = Get.find<AppController>();
+    if (!ctrl.isLoggedIn) { Get.toNamed('/login'); return; }
+    final titleCtrl = TextEditingController();
+    final contentCtrl = TextEditingController();
+    String selectedCat = '计算机';
+    final cats = ['中小学', '大学课程', '计算机', '网络安全', '考研', '公考', '语言', '职场', '自我成长'];
+    Get.dialog(StatefulBuilder(builder: (ctx, setS) => AlertDialog(
+      title: Row(children: [
+        Icon(Icons.lightbulb_outline, color: Theme.of(Get.context!).primaryColor, size: 20.sp),
+        SizedBox(width: 6.w), Text('发布存学', style: TextStyle(fontSize: 16.sp)),
+      ]),
+      content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        DropdownButtonFormField<String>(
+          value: selectedCat,
+          decoration: const InputDecoration(labelText: '学习类目'),
+          items: cats.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+          onChanged: (v) => setS(() => selectedCat = v ?? '计算机'),
+        ),
+        SizedBox(height: 10.h),
+        TextField(controller: titleCtrl, maxLength: 50,
+            decoration: const InputDecoration(labelText: '标题（选填）', border: OutlineInputBorder())),
+        SizedBox(height: 10.h),
+        TextField(controller: contentCtrl, maxLines: 5, maxLength: 500,
+            decoration: const InputDecoration(hintText: '分享学习干货、笔记、经验～\n（仅支持原创文字，禁止搬运）', border: OutlineInputBorder())),
+      ])),
+      actions: [
+        TextButton(onPressed: () => Get.back(), child: const Text('取消')),
+        ElevatedButton(onPressed: () async {
+          if (contentCtrl.text.trim().isEmpty) return;
+          try {
+            await _apiService.post('/resource/post', body: {'title': titleCtrl.text.trim(), 'content': contentCtrl.text.trim(), 'category': selectedCat});
+            Get.back();
+            Get.snackbar('发布成功', '你的学习干货已发布～', backgroundColor: Colors.green, colorText: Colors.white);
+            _loadResources();
+          } catch (_) { Get.snackbar('发布失败', '请稍后重试'); }
+        }, child: const Text('发布')),
+      ],
+    )));
   }
 }

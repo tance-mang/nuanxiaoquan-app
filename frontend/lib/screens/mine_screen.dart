@@ -12,7 +12,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import '../controllers/app_controller.dart';
-import '../widgets/level_badge.dart'; // 等级徽章组件
+import '../widgets/level_badge.dart';
+import '../widgets/tap_scale.dart';
 
 class MineScreen extends StatelessWidget {
   const MineScreen({Key? key}) : super(key: key);
@@ -86,16 +87,20 @@ class MineScreen extends StatelessWidget {
       color: Colors.white,
       child: Obx(() => Row(
         children: [
-          // 头像（可点击进入个人主页）
+          // 头像（未登录时点击跳转登录）
           GestureDetector(
-            onTap: () => Get.toNamed('/profile'),
+            onTap: () => controller.isLoggedIn
+                ? Get.toNamed('/profile')
+                : Get.toNamed('/login'),
             child: CircleAvatar(
               radius: 30.r,
               backgroundImage: controller.currentUserAvatar.value.isNotEmpty
                   ? NetworkImage(controller.currentUserAvatar.value)
                   : null,
               child: controller.currentUserAvatar.value.isEmpty
-                  ? Icon(Icons.person, size: 30.sp, color: Colors.white)
+                  ? Icon(
+                      controller.isLoggedIn ? Icons.person : Icons.login,
+                      size: 26.sp, color: Colors.white)
                   : null,
               backgroundColor: Theme.of(context).primaryColor,
             ),
@@ -103,43 +108,38 @@ class MineScreen extends StatelessWidget {
 
           SizedBox(width: 16.w),
 
-          // 昵称 + 等级徽章
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 昵称
                 Text(
-                  controller.isLoggedIn
-                      ? controller.currentUserName.value
-                      : '点击登录',
-                  style: TextStyle(
-                    fontSize: 18.sp,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  controller.isLoggedIn ? controller.currentUserName.value : '游客模式',
+                  style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.bold),
                 ),
                 SizedBox(height: 6.h),
-                // 双等级徽章（并排显示）
-                Row(
-                  children: [
-                    // 星途学阶等级
-                    LevelBadge(
-                      level: controller.studyLevel.value,
-                      type: LevelType.study, // 学习等级
-                    ),
+                if (controller.isLoggedIn)
+                  Row(children: [
+                    LevelBadge(level: controller.studyLevel.value, type: LevelType.study),
                     SizedBox(width: 8.w),
-                    // 知源贡献等级
-                    LevelBadge(
-                      level: controller.contributeLevel.value,
-                      type: LevelType.contribute, // 贡献等级
+                    LevelBadge(level: controller.contributeLevel.value, type: LevelType.contribute),
+                  ])
+                else
+                  TapScale(
+                    onTap: () => Get.toNamed('/login'),
+                    child: Container(
+                      padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 5.h),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).primaryColor,
+                        borderRadius: BorderRadius.circular(16.r),
+                      ),
+                      child: Text('登录 / 注册',
+                          style: TextStyle(fontSize: 12.sp, color: Colors.white, fontWeight: FontWeight.w600)),
                     ),
-                  ],
-                ),
+                  ),
               ],
             ),
           ),
 
-          // 右箭头（进入个人主页）
           Icon(Icons.chevron_right, color: Colors.grey[400]),
         ],
       )),
@@ -149,8 +149,159 @@ class MineScreen extends StatelessWidget {
   // -------------------------------------------------------
   // 2. 双等级详情卡片
   // -------------------------------------------------------
-  Widget _buildLevelCard(BuildContext context, AppController controller) {
+  static const _studyLevelNames = [
+    '', '学习萌新', '勤奋学徒', '专注达人', '学习先锋',
+    '知识猎手', '高手进阶', '学海领航', '智识大师', '卓越学者', '暖圈之星'
+  ];
+  static const _contributeLevelNames = [
+    '', '初心分享者', '知识播种者', '干货贡献者', '学海引路人',
+    '知识守护者', '精英输出者', '教研先行者', '知识灯塔', '学界权威', '暖圈导师'
+  ];
+
+  void _showLevelSheet(BuildContext context, AppController ctrl) {
+    final primary = Theme.of(context).primaryColor;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => DraggableScrollableSheet(
+        initialChildSize: 0.85,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        builder: (_, scrollCtrl) => Container(
+          decoration: BoxDecoration(
+            color: Colors.grey.shade50,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20.r)),
+          ),
+          child: Column(
+            children: [
+              Container(
+                margin: EdgeInsets.only(top: 10.h, bottom: 4.h),
+                width: 36.w,
+                height: 4.h,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2.r),
+                ),
+              ),
+              Padding(
+                padding: EdgeInsets.symmetric(vertical: 12.h),
+                child: Text('我的等级',
+                    style: TextStyle(fontSize: 17.sp, fontWeight: FontWeight.bold)),
+              ),
+              Expanded(
+                child: Obx(() => ListView(
+                  controller: scrollCtrl,
+                  padding: EdgeInsets.fromLTRB(16.w, 0, 16.w, 32.h),
+                  children: [
+                    _buildLevelDetailCard(
+                      icon: '⭐', title: '星途学阶', subtitle: '日常学习 · 打卡专属',
+                      levelName: _studyLevelNames[ctrl.studyLevel.value.clamp(1, 10)],
+                      level: ctrl.studyLevel.value, exp: ctrl.studyExp.value,
+                      nextExp: _getStudyNextLevelExp(ctrl.studyLevel.value),
+                      color: Colors.amber,
+                      howToEarn: const ['每日专注自习 +5 经验', '完成学习计划 +10 经验', '连续打卡7天 +20 经验', '发布暖句 +3 经验'],
+                    ),
+                    SizedBox(height: 14.h),
+                    _buildLevelDetailCard(
+                      icon: '📚', title: '知源贡献', subtitle: '发布学习资源专属',
+                      levelName: _contributeLevelNames[ctrl.contributeLevel.value.clamp(1, 10)],
+                      level: ctrl.contributeLevel.value, exp: ctrl.contributeExp.value,
+                      nextExp: _getContributeNextLevelExp(ctrl.contributeLevel.value),
+                      color: Colors.deepPurple,
+                      howToEarn: const ['发布存知内容 +15 经验', '内容获得收藏 +8 经验', '内容获得点赞 +3 经验', '连续7天发布 +30 经验'],
+                    ),
+                  ],
+                )),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLevelDetailCard({
+    required String icon, required String title, required String subtitle,
+    required String levelName, required int level, required int exp,
+    required int nextExp, required Color color, required List<String> howToEarn,
+  }) {
+    final progress = nextExp > 0 ? (exp / nextExp).clamp(0.0, 1.0) : 1.0;
+    final isMax = level >= 10;
     return Container(
+      padding: EdgeInsets.all(20.w),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16.r),
+        boxShadow: [BoxShadow(color: color.withOpacity(0.10), blurRadius: 10, offset: const Offset(0, 3))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Container(
+              width: 52.w, height: 52.w,
+              decoration: BoxDecoration(color: color.withOpacity(0.12), shape: BoxShape.circle),
+              child: Center(child: Text(icon, style: TextStyle(fontSize: 22.sp))),
+            ),
+            SizedBox(width: 12.w),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.bold)),
+              Text(subtitle, style: TextStyle(fontSize: 11.sp, color: Colors.grey[500])),
+            ])),
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 5.h),
+              decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(20.r)),
+              child: Text('Lv.$level', style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 14.sp)),
+            ),
+          ]),
+          SizedBox(height: 12.h),
+          Text(levelName, style: TextStyle(fontSize: 17.sp, fontWeight: FontWeight.bold, color: color)),
+          SizedBox(height: 10.h),
+          if (!isMax) ...[
+            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+              Text('经验值', style: TextStyle(fontSize: 12.sp, color: Colors.grey[500])),
+              Text('$exp / $nextExp', style: TextStyle(fontSize: 12.sp, color: color, fontWeight: FontWeight.w600)),
+            ]),
+            SizedBox(height: 6.h),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4.r),
+              child: LinearProgressIndicator(
+                value: progress, backgroundColor: Colors.grey.shade100,
+                valueColor: AlwaysStoppedAnimation<Color>(color), minHeight: 8.h,
+              ),
+            ),
+            SizedBox(height: 4.h),
+            Text('还需 ${nextExp - exp} 经验升到 Lv.${level + 1}',
+                style: TextStyle(fontSize: 11.sp, color: Colors.grey[400])),
+          ] else
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 5.h),
+              decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(8.r)),
+              child: Text('已达最高等级！', style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 13.sp)),
+            ),
+          SizedBox(height: 14.h),
+          Divider(height: 1, color: Colors.grey.shade100),
+          SizedBox(height: 10.h),
+          Text('如何获得经验', style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w600, color: Colors.grey[600])),
+          SizedBox(height: 6.h),
+          ...howToEarn.map((tip) => Padding(
+            padding: EdgeInsets.only(bottom: 5.h),
+            child: Row(children: [
+              Container(width: 5.w, height: 5.w, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+              SizedBox(width: 8.w),
+              Text(tip, style: TextStyle(fontSize: 13.sp, color: Colors.grey[600])),
+            ]),
+          )),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLevelCard(BuildContext context, AppController controller) {
+    return TapScale(
+      onTap: () => _showLevelSheet(context, controller),
+      child: Container(
       margin: EdgeInsets.symmetric(horizontal: 16.w),
       padding: EdgeInsets.all(16.w),
       decoration: BoxDecoration(
@@ -186,7 +337,7 @@ class MineScreen extends StatelessWidget {
           ),
         ],
       )),
-    );
+    ));
   }
 
   // 单行等级展示（进度条）
@@ -313,19 +464,19 @@ class MineScreen extends StatelessWidget {
               mainAxisSpacing: 12.h,
               childAspectRatio: 1.2,
               children: [
-                // 记账助手（所有用户可见）
+                // 暖账（所有用户可见）
                 _buildFunctionItem(
                   context,
                   icon: Icons.account_balance_wallet_outlined,
-                  label: '记账助手',
+                  label: '暖账',
                   color: Colors.green,
                   onTap: () => Get.toNamed('/accounting'),
                 ),
-                // 备忘录（所有用户可见）
+                // 暖记（所有用户可见）
                 _buildFunctionItem(
                   context,
                   icon: Icons.note_alt_outlined,
-                  label: '备忘录',
+                  label: '暖记',
                   color: Colors.orange,
                   onTap: () => Get.toNamed('/memo'),
                 ),
@@ -334,9 +485,9 @@ class MineScreen extends StatelessWidget {
                   _buildFunctionItem(
                     context,
                     icon: Icons.favorite_outline,
-                    label: '生理期助手',
+                    label: '暖圈关怀',
                     color: Colors.pink,
-                    onTap: () => Get.toNamed('/menstrual'),
+                    onTap: () => Get.toNamed('/warmcare'),
                   ),
               ],
             );
@@ -354,7 +505,7 @@ class MineScreen extends StatelessWidget {
     required Color color,
     required VoidCallback onTap,
   }) {
-    return GestureDetector(
+    return TapScale(
       onTap: onTap,
       child: Container(
         decoration: BoxDecoration(
@@ -470,12 +621,16 @@ class MineScreen extends StatelessWidget {
             onTap: () => Get.toNamed('/feedback'),
           ),
           _buildDivider(),
-          // 退出登录按钮（红色警示）
-          _buildListTile(
-            icon: Icons.logout,
-            iconColor: Colors.red,
-            title: '退出登录',
+          // 登录 / 退出登录
+          Obx(() => _buildListTile(
+            icon: controller.isLoggedIn ? Icons.logout : Icons.login,
+            iconColor: controller.isLoggedIn ? Colors.red : Theme.of(context).primaryColor,
+            title: controller.isLoggedIn ? '退出登录' : '登录 / 注册',
             onTap: () {
+              if (!controller.isLoggedIn) {
+                Get.toNamed('/login');
+                return;
+              }
               Get.dialog(AlertDialog(
                 title: const Text('确定退出登录？'),
                 actions: [
@@ -484,14 +639,13 @@ class MineScreen extends StatelessWidget {
                     onPressed: () {
                       controller.logout();
                       Get.back();
-                      Get.offAllNamed('/login'); // 跳转登录页
                     },
                     child: const Text('退出', style: TextStyle(color: Colors.red)),
                   ),
                 ],
               ));
             },
-          ),
+          )),
         ],
       ),
     );
@@ -505,23 +659,27 @@ class MineScreen extends StatelessWidget {
     String? subtitle,
     required VoidCallback onTap,
   }) {
-    return ListTile(
-      leading: Container(
-        width: 36.w,
-        height: 36.w,
-        decoration: BoxDecoration(
-          color: iconColor.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(8.r),
-        ),
-        child: Icon(icon, color: iconColor, size: 20.sp),
-      ),
-      title: Text(title, style: TextStyle(fontSize: 14.sp)),
-      subtitle: subtitle != null
-          ? Text(subtitle,
-              style: TextStyle(fontSize: 12.sp, color: Colors.grey[500]))
-          : null,
-      trailing: Icon(Icons.chevron_right, color: Colors.grey[400], size: 18.sp),
+    return TapScale(
+      scale: 0.97,
       onTap: onTap,
+      child: ListTile(
+        leading: Container(
+          width: 36.w,
+          height: 36.w,
+          decoration: BoxDecoration(
+            color: iconColor.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8.r),
+          ),
+          child: Icon(icon, color: iconColor, size: 20.sp),
+        ),
+        title: Text(title, style: TextStyle(fontSize: 14.sp)),
+        subtitle: subtitle != null
+            ? Text(subtitle,
+                style: TextStyle(fontSize: 12.sp, color: Colors.grey[500]))
+            : null,
+        trailing: Icon(Icons.chevron_right, color: Colors.grey[400], size: 18.sp),
+        onTap: null,
+      ),
     );
   }
 

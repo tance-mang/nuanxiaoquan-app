@@ -36,9 +36,9 @@ class _SplashScreenState extends State<SplashScreen>
 
     _animController.forward();
 
-    // 2.5 秒后跳转登录页
+    // 2.5 秒后进入主页（游客模式，无需登录）
     Future.delayed(const Duration(milliseconds: 2500), () {
-      Get.offAllNamed('/login');
+      Get.offAllNamed('/main');
     });
   }
 
