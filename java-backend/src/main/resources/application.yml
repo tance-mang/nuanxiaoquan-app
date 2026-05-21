@@ -49,15 +49,14 @@ warmcircle:
   # Python 安全微服务地址（和 python-security/ 对应）
   security-service-url: http://localhost:8000
 
-  # 豆包 AI 配置（火山引擎 ARK）负责：学习计划生成、存知内容生成
+  # 豆包 AI 配置（火山引擎方舟 v3，兼容 OpenAI 格式）—— 唯一外部 AI
+  # 仅用于：学习计划文案、暖句生成、存知内容生成
+  # 其他任务（数据分析 / 周期预测 / 状态判定）全部用本地确定性算法
+  # API Key 从"火山引擎-方舟平台-API Key 管理"创建
+  # 模型 ID 取自 https://www.volcengine.com/docs/82379/1330310（256k 上下文版本）
   doubao:
     api-key: "ark-c3409235-6b79-4db3-935b-3eb989211a26-a0ada"
-    model: "doubao-1-5-pro-32k-250115"
-
-  # DeepSeek 配置（备用）
-  deepseek:
-    api-key: "sk-8cda05c078b4478cbeebc13a974d5ab9"
-    base-url: "https://api.deepseek.com"
+    model: "doubao-1-5-pro-256k-250115"
 
   # 管理员账号（用来回答答疑，不要公开）
   admin-phone: "13800000000"         # ← 改成你自己的手机号

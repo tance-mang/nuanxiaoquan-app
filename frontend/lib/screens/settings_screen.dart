@@ -24,6 +24,9 @@ class SettingsScreen extends StatelessWidget {
           _sectionTitle('小暖 AI'),
           _buildAiSection(ctrl),
           SizedBox(height: 8.h),
+          _sectionTitle('微休息偏好'),
+          _buildInterestSection(),
+          SizedBox(height: 8.h),
           _sectionTitle('隐私与安全'),
           _buildPrivacySection(),
           SizedBox(height: 8.h),
@@ -52,34 +55,41 @@ class SettingsScreen extends StatelessWidget {
     return Container(
       margin: EdgeInsets.symmetric(horizontal: 16.w),
       padding: EdgeInsets.all(16.w),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12.r)),
+      decoration: BoxDecoration(
+          color: Colors.white, borderRadius: BorderRadius.circular(12.r)),
       child: Obx(() {
         final gender = ctrl.userGender.value;
         return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('我的性别', style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w500)),
+          Text('我的性别',
+              style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w500)),
           SizedBox(height: 4.h),
-          Text('选择"女生"后，将解锁「暖圈关怀」生理期管理功能',
+          Text('选择"女生"后，将解锁「暖圈关怀」功能',
               style: TextStyle(fontSize: 11.sp, color: Colors.grey[500])),
           SizedBox(height: 14.h),
           Row(children: [
-            _genderChip('男生', 'male', Icons.face_outlined, Colors.blue, gender, ctrl),
+            _genderChip(
+                '男生', 'male', Icons.face_outlined, Colors.blue, gender, ctrl),
             SizedBox(width: 12.w),
-            _genderChip('女生', 'female', Icons.face_3_outlined, Colors.pink, gender, ctrl),
+            _genderChip('女生', 'female', Icons.face_3_outlined, Colors.pink,
+                gender, ctrl),
             SizedBox(width: 12.w),
-            _genderChip('不透露', 'unknown', Icons.help_outline, Colors.grey, gender, ctrl),
+            _genderChip('不透露', 'unknown', Icons.help_outline, Colors.grey,
+                gender, ctrl),
           ]),
           if (gender == 'female') ...[
             SizedBox(height: 10.h),
             Container(
               padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 6.h),
               decoration: BoxDecoration(
-                color: Colors.pink.shade50, borderRadius: BorderRadius.circular(8.r),
+                color: Colors.pink.shade50,
+                borderRadius: BorderRadius.circular(8.r),
               ),
               child: Row(children: [
                 const Text('💕', style: TextStyle(fontSize: 13)),
                 SizedBox(width: 6.w),
                 Text('暖圈关怀已解锁，可在「我的工具」中找到',
-                    style: TextStyle(fontSize: 12.sp, color: Colors.pink.shade400)),
+                    style: TextStyle(
+                        fontSize: 12.sp, color: Colors.pink.shade400)),
               ]),
             ),
           ],
@@ -88,7 +98,8 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
-  Widget _genderChip(String label, String value, IconData icon, Color color, String current, AppController ctrl) {
+  Widget _genderChip(String label, String value, IconData icon, Color color,
+      String current, AppController ctrl) {
     final selected = current == value;
     return TapScale(
       scale: 0.92,
@@ -99,12 +110,18 @@ class SettingsScreen extends StatelessWidget {
         decoration: BoxDecoration(
           color: selected ? color.withOpacity(0.1) : Colors.grey.shade100,
           borderRadius: BorderRadius.circular(20.r),
-          border: Border.all(color: selected ? color : Colors.grey.shade300, width: selected ? 1.5 : 1),
+          border: Border.all(
+              color: selected ? color : Colors.grey.shade300,
+              width: selected ? 1.5 : 1),
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(icon, size: 16.sp, color: selected ? color : Colors.grey[500]),
           SizedBox(width: 4.w),
-          Text(label, style: TextStyle(fontSize: 13.sp, color: selected ? color : Colors.grey[600], fontWeight: selected ? FontWeight.w600 : FontWeight.normal)),
+          Text(label,
+              style: TextStyle(
+                  fontSize: 13.sp,
+                  color: selected ? color : Colors.grey[600],
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.normal)),
         ]),
       ),
     );
@@ -112,11 +129,31 @@ class SettingsScreen extends StatelessWidget {
 
   Widget _buildThemeSection(BuildContext context, AppController ctrl) {
     final themes = [
-      {'key': AppThemes.pinkTheme, 'name': '温柔粉', 'color': const Color(0xFFE89DAC)},
-      {'key': AppThemes.purpleTheme, 'name': '优雅紫', 'color': const Color(0xFF9B8CC4)},
-      {'key': AppThemes.blueTheme, 'name': '清新蓝', 'color': const Color(0xFF5B9BD5)},
-      {'key': AppThemes.mintTheme, 'name': '薄荷绿', 'color': const Color(0xFF7CBEA7)},
-      {'key': AppThemes.defaultTheme, 'name': '简约灰', 'color': const Color(0xFF8B8B8B)},
+      {
+        'key': AppThemes.pinkTheme,
+        'name': '温柔粉',
+        'color': const Color(0xFFE89DAC)
+      },
+      {
+        'key': AppThemes.purpleTheme,
+        'name': '优雅紫',
+        'color': const Color(0xFF9B8CC4)
+      },
+      {
+        'key': AppThemes.blueTheme,
+        'name': '清新蓝',
+        'color': const Color(0xFF5B9BD5)
+      },
+      {
+        'key': AppThemes.mintTheme,
+        'name': '薄荷绿',
+        'color': const Color(0xFF7CBEA7)
+      },
+      {
+        'key': AppThemes.defaultTheme,
+        'name': '简约灰',
+        'color': const Color(0xFF8B8B8B)
+      },
     ];
 
     return Container(
@@ -163,8 +200,7 @@ class SettingsScreen extends StatelessWidget {
                 ),
                 SizedBox(height: 6.h),
                 Text(name,
-                    style:
-                        TextStyle(fontSize: 11.sp, color: Colors.grey[600])),
+                    style: TextStyle(fontSize: 11.sp, color: Colors.grey[600])),
               ],
             ),
           );
@@ -202,6 +238,23 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
+  Widget _buildInterestSection() {
+    return Container(
+      margin: EdgeInsets.symmetric(horizontal: 16.w),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12.r),
+      ),
+      child: ListTile(
+        leading: const Icon(Icons.spa_outlined, color: Color(0xFF10B981)),
+        title: const Text('管理微休息活动'),
+        subtitle: const Text('小暖在你疲劳时建议哪些活动，由你决定'),
+        trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+        onTap: () => Get.toNamed('/interest-prefs'),
+      ),
+    );
+  }
+
   Widget _buildPrivacySection() {
     return Container(
       margin: EdgeInsets.symmetric(horizontal: 16.w),
@@ -216,8 +269,8 @@ class SettingsScreen extends StatelessWidget {
             title: const Text('隐私设置'),
             subtitle: const Text('内容隐私 · 信息保护'),
             trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-            onTap: () => Get.snackbar('', '功能开发中…',
-                snackPosition: SnackPosition.TOP),
+            onTap: () =>
+                Get.snackbar('', '功能开发中…', snackPosition: SnackPosition.TOP),
           ),
           Divider(height: 1, indent: 16.w),
           ListTile(
@@ -225,8 +278,8 @@ class SettingsScreen extends StatelessWidget {
             title: const Text('账号安全'),
             subtitle: const Text('修改密码 · 登录管理'),
             trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-            onTap: () => Get.snackbar('', '功能开发中…',
-                snackPosition: SnackPosition.TOP),
+            onTap: () =>
+                Get.snackbar('', '功能开发中…', snackPosition: SnackPosition.TOP),
           ),
         ],
       ),
@@ -246,33 +299,60 @@ class SettingsScreen extends StatelessWidget {
             leading: const Icon(Icons.campaign_outlined, color: Colors.orange),
             title: const Text('官方公告'),
             trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-            onTap: () => Get.dialog(AlertDialog(
-              title: const Text('官方公告'),
-              content: const Text(
-                  '欢迎使用暖小圈 v1.0！\n\n本版本包含：AI学习计划、自习室、知识小馆、暖记、暖账、暖圈关怀。\n\n域名 nuanxiaoquan.cn 备案中，敬请期待正式上线 🌸'),
-              actions: [
-                TextButton(onPressed: () => Get.back(), child: const Text('好的')),
-              ],
-            )),
+            onTap: () {
+              // 公告中"暖圈关怀"仅对女性用户展示，避免给其他用户错误的产品定位印象
+              final isFemale =
+                  Get.find<AppController>().userGender.value == 'female';
+              final features = isFemale
+                  ? 'AI学习计划、自习室、知识小馆、暖记、暖账、暖圈关怀'
+                  : 'AI学习计划、自习室、知识小馆、暖记、暖账';
+              Get.dialog(AlertDialog(
+                title: const Text('官方公告'),
+                content: Text(
+                    '欢迎使用暖小圈 v1.1！\n\n本版本包含：$features。\n\n域名 nuanxiaoquan.cn 已完成备案\n备案号：桂ICP备2026007360号-2A'),
+                actions: [
+                  TextButton(
+                      onPressed: () => Get.back(), child: const Text('好的')),
+                ],
+              ));
+            },
           ),
           Divider(height: 1, indent: 16.w),
           ListTile(
             leading: const Icon(Icons.info_outline, color: Colors.blue),
             title: const Text('关于暖小圈'),
-            subtitle: const Text('v1.0  AI 学习助手'),
+            subtitle: const Text('v1.1  AI 学习助手'),
             trailing: const Icon(Icons.chevron_right, color: Colors.grey),
             onTap: () => Get.dialog(AlertDialog(
               title: const Text('关于暖小圈'),
-              content: const Text(
-                  '暖小圈 v1.0\n\n一款面向学生的温暖学习助手，让学习更有温度。\n\nAI 支持：\n• 火山引擎豆包大模型\n• DeepSeek 大模型\n\n域名：nuanxiaoquan.cn\n©2026 暖小圈团队'),
+              content: const SingleChildScrollView(
+                child: Text(
+                  '暖小圈 v1.1\n\n'
+                  '一款面向学生的温暖学习助手，让学习更有温度。\n\n'
+                  '——————————\n'
+                  'AI 技术支持：豆包\n'
+                  '（火山引擎方舟大模型，仅用于学习计划/暖句/对话等文案生成）\n\n'
+                  '今日推荐文案来源：一言（hitokoto.cn）\n'
+                  '感谢一言提供免费、稳定的开放 API。\n'
+                  '使用遵循 hitokoto 开源协议，每日缓存 24 小时调用一次。\n\n'
+                  '其余功能（状态判定 / 数据分析 / 周期预测）均采用本地确定性算法，'
+                  '不依赖任何外部 AI，断网亦可正常使用。\n'
+                  '——————————\n\n'
+                  '域名：nuanxiaoquan.cn\n'
+                  '备案号：桂ICP备2026007360号-2A\n'
+                  '©2026 暖小圈',
+                ),
+              ),
               actions: [
-                TextButton(onPressed: () => Get.back(), child: const Text('关闭')),
+                TextButton(
+                    onPressed: () => Get.back(), child: const Text('关闭')),
               ],
             )),
           ),
           Divider(height: 1, indent: 16.w),
           ListTile(
-            leading: const Icon(Icons.cleaning_services_outlined, color: Colors.grey),
+            leading: const Icon(Icons.cleaning_services_outlined,
+                color: Colors.grey),
             title: const Text('清理缓存'),
             trailing: const Icon(Icons.chevron_right, color: Colors.grey),
             onTap: () {

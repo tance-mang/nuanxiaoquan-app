@@ -52,8 +52,8 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 // 不需要登录的接口
                 .requestMatchers("/auth/register", "/auth/login", "/auth/send-code").permitAll()
-                // 公开接口（查看语录、资源）
-                .requestMatchers("/resource/list", "/resource/detail/**", "/quote/today").permitAll()
+                // 公开接口（查看资源；"今日推荐暖句"已下沉到客户端走一言公开 API，不再由后端提供）
+                .requestMatchers("/resource/list", "/resource/detail/**").permitAll()
                 // 答疑公开浏览（但回答需要管理员）
                 .requestMatchers("/qa/list", "/qa/detail/**").permitAll()
                 // 其他全部需要登录

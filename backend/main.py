@@ -7,9 +7,10 @@
 ║  职责（Python 保留这部分是因为生态优势）：                    ║
 ║    1. 链接安全检测（三层过滤）                                ║
 ║    2. WAF（Web 应用防火墙）— 拦截 SQL 注入/XSS/命令注入      ║
-║    3. 爬虫系统（定时抓取语录和资源）                         ║
 ║                                                              ║
 ║  Java 主后端每次用户发布内容时调用 /security/check           ║
+║                                                              ║
+║  每日推荐暖句不在后端处理，由前端直接调用一言公开 API。       ║
 ╚══════════════════════════════════════════════════════════════╝
 """
 from fastapi import FastAPI, Request
@@ -20,7 +21,7 @@ import uvicorn
 
 app = FastAPI(
     title="暖小圈安全微服务",
-    description="链接检测 + WAF + 爬虫",
+    description="链接检测 + WAF",
     version="2.0.0"
 )
 

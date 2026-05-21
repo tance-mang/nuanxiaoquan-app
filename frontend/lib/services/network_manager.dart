@@ -35,11 +35,10 @@ class NetworkManager extends GetxController {
   // ════════════════════════════════════════════════════════════
   Future<void> _checkInitialConnection() async {
     try {
-      final result = await _connectivity.checkConnectivity();
-      _updateConnectionStatus(result);
+      final results = await _connectivity.checkConnectivity();
+      _updateConnectionStatus(results);
       isInitialized.value = true;
 
-      // 打印日志，方便调试
       if (isOnline.value) {
         print('✅ 网络已连接，在线模式');
       } else {
@@ -47,7 +46,7 @@ class NetworkManager extends GetxController {
       }
     } catch (e) {
       print('❌ 网络检测失败: $e');
-      isOnline.value = false; // 检测失败默认离线
+      isOnline.value = false;
       isInitialized.value = true;
     }
   }
@@ -56,10 +55,9 @@ class NetworkManager extends GetxController {
   // 监听网络变化（实时更新）
   // ════════════════════════════════════════════════════════════
   void _listenToConnectionChanges() {
-    _connectivity.onConnectivityChanged.listen((result) {
-      _updateConnectionStatus(result);
+    _connectivity.onConnectivityChanged.listen((results) {
+      _updateConnectionStatus(results);
 
-      // 网络状态变化时弹出提示
       if (isOnline.value) {
         Get.snackbar(
           '网络已连接',
@@ -82,13 +80,6 @@ class NetworkManager extends GetxController {
   // 更新网络状态
   // ════════════════════════════════════════════════════════════
   void _updateConnectionStatus(List<ConnectivityResult> results) {
-    // ConnectivityResult 可能的值：
-    // - mobile: 移动数据（4G/5G）
-    // - wifi: WiFi
-    // - none: 无网络
-    // - ethernet: 有线网（平板可能有）
-    
-    // 只要有任一网络类型，就算在线
     final hasConnection = results.any((result) =>
         result == ConnectivityResult.mobile ||
         result == ConnectivityResult.wifi ||
@@ -97,14 +88,15 @@ class NetworkManager extends GetxController {
     isOnline.value = hasConnection;
   }
 
+  Future<bool> checkConnection() async {
+    final results = await _connectivity.checkConnectivity();
+    _updateConnectionStatus(results);
+    return isOnline.value;
+  }
+
   // ════════════════════════════════════════════════════════════
   // 主动检查网络（手动刷新时调用）
   // ════════════════════════════════════════════════════════════
-  Future<bool> checkConnection() async {
-    final result = await _connectivity.checkConnectivity();
-    _updateConnectionStatus(result);
-    return isOnline.value;
-  }
 
   // ════════════════════════════════════════════════════════════
   // 需要网络时的拦截器（在调用AI前调用）

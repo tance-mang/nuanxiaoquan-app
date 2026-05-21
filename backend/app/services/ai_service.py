@@ -1,46 +1,46 @@
 """
-豆包AI服务 - 智能学习计划生成
+豆包 AI 服务 —— 学习计划 / 文案生成
+统一走火山引擎方舟 v3（兼容 OpenAI 格式）：
+    POST https://ark.cn-beijing.volces.com/api/v3/chat/completions
+    Authorization: Bearer {ARK_API_KEY}
+
+仅用于自然语言生成类任务。统计 / 周期预测 / 数据分析都在本地算法里跑，不走 AI。
 """
 import json
 import requests
+from typing import Any, Dict
+
 from config.settings import settings
-from typing import Dict, Any
+
 
 class AIService:
     def __init__(self):
-        self.access_key = settings.DOUBAO_ACCESS_KEY
-        self.secret_key = settings.DOUBAO_SECRET_KEY
-        self.endpoint = settings.DOUBAO_ENDPOINT
-        self.model = settings.DOUBAO_MODEL
-    
+        self.api_key = settings.ARK_API_KEY
+        self.base_url = settings.ARK_BASE_URL.rstrip("/")
+        self.model = settings.ARK_MODEL
+
+    # ── 对外入口 ──────────────────────────────────────────────────
+
     def generate_study_plan(self, user_data: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        生成个性化学习计划
-        
-        Args:
-            user_data: 用户数据
-                - education_level: 学段
-                - goal: 学习目标
-                - duration: 计划时长(天)
-                - daily_hours: 每日可用时间
-                - strengths: 强项科目列表
-                - weaknesses: 弱项科目列表
-                - current_level: 当前基础
-        
-        Returns:
-            AI生成的学习计划JSON
-        """
         prompt = self._build_study_plan_prompt(user_data)
-        
-        response = self._call_doubao_api(prompt)
-        
-        return self._parse_study_plan(response)
-    
+        response_text = self._call_doubao_api(prompt)
+        return self._parse_study_plan(response_text)
+
+    def adjust_plan_by_progress(self, plan: Dict, completion_rate: float) -> Dict:
+        if completion_rate < 0.7:
+            plan['adjustment_suggestion'] = "建议放慢节奏，重点巩固基础"
+        elif completion_rate > 0.9:
+            plan['adjustment_suggestion'] = "进度良好，可以适当增加难度"
+        else:
+            plan['adjustment_suggestion'] = "保持当前节奏"
+        return plan
+
+    # ── Prompt 构造 ───────────────────────────────────────────────
+
     def _build_study_plan_prompt(self, data: Dict) -> str:
-        """构建学习计划提示词"""
         strengths = ', '.join(data.get('strengths', []))
         weaknesses = ', '.join(data.get('weaknesses', []))
-        
+
         return f"""你是一位专业的学习规划师，请为以下用户生成详细的学习计划。
 
 **用户画像**
@@ -89,61 +89,52 @@ class AIService:
     "遇到难题及时标记，周末集中攻克"
   ]
 }}"""
-    
+
+    # ── 火山方舟调用 ──────────────────────────────────────────────
+
     def _call_doubao_api(self, prompt: str) -> str:
-        """
-        调用豆包API
-        注意：这是示例代码，实际需要根据豆包SDK文档调整
-        """
-        url = f"https://{self.endpoint}/api/v1/chat"
-        
+        if not self.api_key or not self.api_key.startswith("ark-"):
+            print("[AI] ARK_API_KEY 未配置，返回默认计划")
+            return ""
+
+        url = f"{self.base_url}/chat/completions"
         headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.access_key}"
+            "Authorization": f"Bearer {self.api_key}",
         }
-        
         payload = {
             "model": self.model,
             "messages": [
-                {
-                    "role": "system",
-                    "content": "你是一位专业的学习规划师，擅长为不同学段的学生制定高效学习计划。"
-                },
-                {
-                    "role": "user",
-                    "content": prompt
-                }
+                {"role": "system", "content": "你是一位专业的学习规划师，擅长为不同学段的学生制定高效学习计划。"},
+                {"role": "user", "content": prompt},
             ],
             "temperature": 0.7,
-            "max_tokens": 4000
+            "max_tokens": 4000,
         }
-        
+
         try:
-            response = requests.post(url, headers=headers, json=payload, timeout=30)
-            response.raise_for_status()
-            result = response.json()
-            return result['choices'][0]['message']['content']
+            resp = requests.post(url, headers=headers, json=payload, timeout=30)
+            resp.raise_for_status()
+            data = resp.json()
+            return data["choices"][0]["message"]["content"]
         except Exception as e:
-            print(f"豆包API调用失败: {e}")
-            # 返回默认计划
-            return self._get_default_plan()
-    
+            print(f"[AI] 豆包API调用失败: {e}")
+            return ""
+
     def _parse_study_plan(self, response: str) -> Dict[str, Any]:
-        """解析AI返回的学习计划"""
+        if not response:
+            return self._get_default_plan()
         try:
-            # 提取JSON部分
             start = response.find('{')
             end = response.rfind('}') + 1
-            json_str = response[start:end]
-            
-            plan = json.loads(json_str)
-            return plan
+            return json.loads(response[start:end])
         except Exception as e:
-            print(f"解析学习计划失败: {e}")
+            print(f"[AI] 解析学习计划失败: {e}")
             return self._get_default_plan()
-    
+
+    # ── 兜底计划 ──────────────────────────────────────────────────
+
     def _get_default_plan(self) -> Dict[str, Any]:
-        """返回默认学习计划模板"""
         return {
             "overall_goal": "系统性学习，稳步提升",
             "phases": [
@@ -157,11 +148,11 @@ class AIService:
                             "date_label": f"第{i}天",
                             "subjects": [
                                 {"name": "主科1", "hours": 2, "content": "基础知识学习", "type": "学习"},
-                                {"name": "主科2", "hours": 1.5, "content": "练习巩固", "type": "练习"}
-                            ]
+                                {"name": "主科2", "hours": 1.5, "content": "练习巩固", "type": "练习"},
+                            ],
                         }
                         for i in range(1, 8)
-                    ]
+                    ],
                 }
             ],
             "checkpoints": [
@@ -169,32 +160,9 @@ class AIService:
             ],
             "tips": [
                 "保持规律作息",
-                "及时复习巩固"
-            ]
+                "及时复习巩固",
+            ],
         }
-    
-    def adjust_plan_by_progress(self, plan: Dict, completion_rate: float) -> Dict:
-        """
-        根据完成度调整学习计划
-        
-        Args:
-            plan: 原计划
-            completion_rate: 完成率 0-1
-        
-        Returns:
-            调整后的计划
-        """
-        if completion_rate < 0.7:
-            # 完成率低，降低难度
-            suggestion = "建议放慢节奏，重点巩固基础"
-        elif completion_rate > 0.9:
-            # 完成率高，增加挑战
-            suggestion = "进度良好，可以适当增加难度"
-        else:
-            suggestion = "保持当前节奏"
-        
-        plan['adjustment_suggestion'] = suggestion
-        return plan
 
-# 单例
+
 ai_service = AIService()

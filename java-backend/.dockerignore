@@ -1,0 +1,21 @@
+# Maven 编译产物（容器内 builder 阶段会重新跑 mvn package）
+target/
+
+# IDE / OS
+.idea
+.vscode
+.mvn
+.DS_Store
+*.iml
+
+# 日志
+*.log
+logs/
+
+# Docker 自身
+Dockerfile
+docker-compose.yml
+
+# 文档
+README.md
+*.md

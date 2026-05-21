@@ -240,11 +240,9 @@ class ResourceService {
     return content is List ? content : [];
   }
 
-  /// 今日语录
-  Future<Map<String, dynamic>?> getTodayQuote() =>
-      _api.get('/quote/today');
-
   /// 我的学习计划（首页展示当前进行中的计划）
+  // 注：今日推荐暖句已迁移到 HitokotoService（一言公开 API + 24h 本地缓存），
+  // 不再走后端 /quote/today。
   Future<List<dynamic>> getMyStudyPlans() async {
     final resp = await _api.get('/study/plans/active');
     if (resp == null) return [];

@@ -2,8 +2,8 @@
 // 文件：screens/mine_screen.dart
 // 作用：「我的」页面 - 个人中心
 // 包含：
-//   - 顶部：头像 + 双等级徽章
-//   - 中部：记账助手 / 备忘录 / 生理期（仅女性可见）入口
+//   - 顶部：头像 + 双等级徽章 + 昵称设置
+//   - 中部：记账助手 / 备忘录 / 暖圈关怀（仅女性可见）入口
 //   - 下部：我的发布 / 我的收藏 / 我的点赞
 //   - 底部：设置入口
 // ============================================================
@@ -23,9 +23,33 @@ class MineScreen extends StatelessWidget {
     // Get.find 找到之前注入的全局控制器
     final controller = Get.find<AppController>();
 
+    final primary = Theme.of(context).primaryColor;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('我的'),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        title: Row(mainAxisSize: MainAxisSize.min, children: [
+          Container(
+            width: 28.w,
+            height: 28.w,
+            decoration:
+                BoxDecoration(color: primary, shape: BoxShape.circle),
+            child: Center(
+              child: Text(
+                '我',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 13.sp,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+          SizedBox(width: 8.w),
+          Text('我的',
+              style:
+                  TextStyle(fontSize: 18.sp, fontWeight: FontWeight.w600)),
+        ]),
         actions: [
           // 右上角设置按钮
           IconButton(
@@ -87,11 +111,9 @@ class MineScreen extends StatelessWidget {
       color: Colors.white,
       child: Obx(() => Row(
         children: [
-          // 头像（未登录时点击跳转登录）
+          // 头像（点击弹出昵称设置）
           GestureDetector(
-            onTap: () => controller.isLoggedIn
-                ? Get.toNamed('/profile')
-                : Get.toNamed('/login'),
+            onTap: () => _showNicknameDialog(context, controller),
             child: CircleAvatar(
               radius: 30.r,
               backgroundImage: controller.currentUserAvatar.value.isNotEmpty
@@ -99,8 +121,8 @@ class MineScreen extends StatelessWidget {
                   : null,
               child: controller.currentUserAvatar.value.isEmpty
                   ? Icon(
-                      controller.isLoggedIn ? Icons.person : Icons.login,
-                      size: 26.sp, color: Colors.white)
+                  controller.isLoggedIn ? Icons.person : Icons.login,
+                  size: 26.sp, color: Colors.white)
                   : null,
               backgroundColor: Theme.of(context).primaryColor,
             ),
@@ -140,9 +162,74 @@ class MineScreen extends StatelessWidget {
             ),
           ),
 
-          Icon(Icons.chevron_right, color: Colors.grey[400]),
+          // 已隐藏箭头，后续版本再启用
+          // Icon(Icons.chevron_right, color: Colors.grey[400]),
         ],
       )),
+    );
+  }
+
+  // ── 昵称设置弹窗 ────────────────────────────────────────────
+  void _showNicknameDialog(BuildContext context, AppController controller) {
+    if (!controller.isLoggedIn) {
+      Get.toNamed('/login');
+      return;
+    }
+
+    final nicknameCtrl = TextEditingController(text: controller.currentUserName.value);
+
+    Get.dialog(
+      AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.r)),
+        title: Row(
+          children: [
+            Icon(Icons.edit, color: Theme.of(context).primaryColor, size: 22.sp),
+            SizedBox(width: 8.w),
+            Text('修改昵称', style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.w600)),
+          ],
+        ),
+        content: TextField(
+          controller: nicknameCtrl,
+          maxLength: 20,
+          autofocus: true,
+          decoration: InputDecoration(
+            hintText: '请输入昵称',
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12.r),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12.r),
+              borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(),
+            child: Text('取消', style: TextStyle(fontSize: 15.sp)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final newNickname = nicknameCtrl.text.trim();
+              if (newNickname.isNotEmpty) {
+                controller.currentUserName.value = newNickname;
+                // TODO: 调用后端 API 保存昵称
+                Get.snackbar('成功', '昵称已更新',
+                  backgroundColor: Colors.green,
+                  colorText: Colors.white,
+                  snackPosition: SnackPosition.BOTTOM,
+                );
+              }
+              Get.back();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Theme.of(context).primaryColor,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10.r)),
+            ),
+            child: Text('确定', style: TextStyle(fontSize: 15.sp, color: Colors.white)),
+          ),
+        ],
+      ),
     );
   }
 
@@ -300,56 +387,56 @@ class MineScreen extends StatelessWidget {
 
   Widget _buildLevelCard(BuildContext context, AppController controller) {
     return TapScale(
-      onTap: () => _showLevelSheet(context, controller),
-      child: Container(
-      margin: EdgeInsets.symmetric(horizontal: 16.w),
-      padding: EdgeInsets.all(16.w),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12.r),
-      ),
-      child: Obx(() => Column(
-        children: [
-          // 星途学阶等级行
-          _buildLevelRow(
-            context,
-            title: '⭐ 星途学阶',
-            subtitle: '日常学习 / 打卡专属等级',
-            level: controller.studyLevel.value,
-            currentExp: controller.studyExp.value,
-            // 星途学阶每级所需经验（升级快，门槛低）
-            nextLevelExp: _getStudyNextLevelExp(controller.studyLevel.value),
-            color: Colors.amber,
+        onTap: () => _showLevelSheet(context, controller),
+        child: Container(
+          margin: EdgeInsets.symmetric(horizontal: 16.w),
+          padding: EdgeInsets.all(16.w),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12.r),
           ),
-          SizedBox(height: 16.h),
-          Divider(height: 1.h, color: Colors.grey.shade100),
-          SizedBox(height: 16.h),
-          // 知源贡献等级行
-          _buildLevelRow(
-            context,
-            title: '📚 知源贡献',
-            subtitle: '发布学习资源专属等级（更难升）',
-            level: controller.contributeLevel.value,
-            currentExp: controller.contributeExp.value,
-            // 知源贡献每级所需经验（比学阶高30%以上）
-            nextLevelExp: _getContributeNextLevelExp(controller.contributeLevel.value),
-            color: Colors.deepPurple,
-          ),
-        ],
-      )),
-    ));
+          child: Obx(() => Column(
+            children: [
+              // 星途学阶等级行
+              _buildLevelRow(
+                context,
+                title: '⭐ 星途学阶',
+                subtitle: '日常学习 / 打卡专属等级',
+                level: controller.studyLevel.value,
+                currentExp: controller.studyExp.value,
+                // 星途学阶每级所需经验（升级快，门槛低）
+                nextLevelExp: _getStudyNextLevelExp(controller.studyLevel.value),
+                color: Colors.amber,
+              ),
+              SizedBox(height: 16.h),
+              Divider(height: 1.h, color: Colors.grey.shade100),
+              SizedBox(height: 16.h),
+              // 知源贡献等级行
+              _buildLevelRow(
+                context,
+                title: '📚 知源贡献',
+                subtitle: '发布学习资源专属等级',
+                level: controller.contributeLevel.value,
+                currentExp: controller.contributeExp.value,
+                // 知源贡献每级所需经验（比学阶高30%以上）
+                nextLevelExp: _getContributeNextLevelExp(controller.contributeLevel.value),
+                color: Colors.deepPurple,
+              ),
+            ],
+          )),
+        ));
   }
 
   // 单行等级展示（进度条）
   Widget _buildLevelRow(
-    BuildContext context, {
-    required String title,
-    required String subtitle,
-    required int level,
-    required int currentExp,
-    required int nextLevelExp,
-    required Color color,
-  }) {
+      BuildContext context, {
+        required String title,
+        required String subtitle,
+        required int level,
+        required int currentExp,
+        required int nextLevelExp,
+        required Color color,
+      }) {
     // 计算进度百分比（0.0 ~ 1.0）
     final progress = nextLevelExp > 0
         ? (currentExp / nextLevelExp).clamp(0.0, 1.0)
@@ -451,45 +538,49 @@ class MineScreen extends StatelessWidget {
                   color: Colors.grey[700])),
           SizedBox(height: 12.h),
 
-          // Obx监听性别变化，自动决定是否显示生理期入口
+          // Obx监听性别变化，自动决定是否显示暖圈关怀入口
           Obx(() {
-            // 生理期入口仅女性可见
+            // 暖圈关怀入口仅女性可见
             final showMenstrual = controller.isMenstrualUnlocked;
 
-            return GridView.count(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              crossAxisCount: showMenstrual ? 3 : 2, // 女性显示3列，男性2列
-              crossAxisSpacing: 12.w,
-              mainAxisSpacing: 12.h,
-              childAspectRatio: 1.2,
-              children: [
-                // 暖账（所有用户可见）
-                _buildFunctionItem(
-                  context,
-                  icon: Icons.account_balance_wallet_outlined,
-                  label: '暖账',
-                  color: Colors.green,
-                  onTap: () => Get.toNamed('/accounting'),
-                ),
-                // 暖记（所有用户可见）
-                _buildFunctionItem(
-                  context,
-                  icon: Icons.note_alt_outlined,
-                  label: '暖记',
-                  color: Colors.orange,
-                  onTap: () => Get.toNamed('/memo'),
-                ),
-                // 生理期（仅女性用户可见）
-                if (showMenstrual)
-                  _buildFunctionItem(
-                    context,
-                    icon: Icons.favorite_outline,
-                    label: '暖圈关怀',
-                    color: Colors.pink,
-                    onTap: () => Get.toNamed('/warmcare'),
-                  ),
-              ],
+            return LayoutBuilder(
+              builder: (context, constraints) {
+                return GridView.count(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  crossAxisCount: showMenstrual ? 3 : 2, // 女性显示3列，男性2列
+                  crossAxisSpacing: 12.w,
+                  mainAxisSpacing: 12.h,
+                  childAspectRatio: 1.15,
+                  children: [
+                    // 暖账（所有用户可见）
+                    _buildFunctionItem(
+                      context,
+                      icon: Icons.account_balance_wallet_outlined,
+                      label: '暖账',
+                      color: Colors.green,
+                      onTap: () => Get.toNamed('/accounting'),
+                    ),
+                    // 暖记（所有用户可见）
+                    _buildFunctionItem(
+                      context,
+                      icon: Icons.note_alt_outlined,
+                      label: '暖记',
+                      color: Colors.orange,
+                      onTap: () => Get.toNamed('/memo'),
+                    ),
+                    // 暖圈关怀（仅女性用户可见）
+                    if (showMenstrual)
+                      _buildFunctionItem(
+                        context,
+                        icon: Icons.favorite_outline,
+                        label: '暖圈关怀',
+                        color: Colors.pink,
+                        onTap: () => Get.toNamed('/warmcare'),
+                      ),
+                  ],
+                );
+              },
             );
           }),
         ],
@@ -499,12 +590,12 @@ class MineScreen extends StatelessWidget {
 
   // 单个功能入口卡片
   Widget _buildFunctionItem(
-    BuildContext context, {
-    required IconData icon,
-    required String label,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
+      BuildContext context, {
+        required IconData icon,
+        required String label,
+        required Color color,
+        required VoidCallback onTap,
+      }) {
     return TapScale(
       onTap: onTap,
       child: Container(
@@ -675,7 +766,7 @@ class MineScreen extends StatelessWidget {
         title: Text(title, style: TextStyle(fontSize: 14.sp)),
         subtitle: subtitle != null
             ? Text(subtitle,
-                style: TextStyle(fontSize: 12.sp, color: Colors.grey[500]))
+            style: TextStyle(fontSize: 12.sp, color: Colors.grey[500]))
             : null,
         trailing: Icon(Icons.chevron_right, color: Colors.grey[400], size: 18.sp),
         onTap: null,

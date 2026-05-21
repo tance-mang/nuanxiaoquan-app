@@ -4,7 +4,7 @@
 //
 // 设计说明：
 //   · 入口在"知识小馆"页面的 Tab 栏，不单独占一个底部导航
-//   · 用户可以提问，选择分类（记账/生理期/学习/资源/其他）
+//   · 用户可以提问，选择分类（记账/暖圈关怀/学习/资源/其他）
 //   · 管理员（开发者）用同一个 APP 登录，显示额外的"回复"按钮
 //   · 官方回复标注"暖圈官方 ✓"徽章，一眼可识
 //   · 已有官方回复的问题显示"已解答"绿色标签
@@ -32,7 +32,15 @@ class _QAScreenState extends State<QAScreen> with SingleTickerProviderStateMixin
   String _selectedCategory = '全部';
 
   // 分类选项（和后端保持一致）
-  final _categories = ['全部', '记账', '生理期', '学习', '资源', '其他'];
+  // 暖圈关怀仅对女性用户暴露 — 避免给其他用户造成"女性专属 App"印象
+  List<String> get _categories {
+    final isFemale = _appController.userGender.value == 'female';
+    return [
+      '全部', '记账',
+      if (isFemale) '暖圈关怀',
+      '学习', '资源', '其他',
+    ];
+  }
 
   @override
   void initState() {
@@ -250,7 +258,13 @@ class _QAScreenState extends State<QAScreen> with SingleTickerProviderStateMixin
             DropdownButtonFormField<String>(
               value: selectedCat,
               decoration: const InputDecoration(labelText: '问题分类'),
-              items: ['记账', '生理期', '学习', '资源', '其他']
+              items: [
+                '记账',
+                if (_appController.userGender.value == 'female') '暖圈关怀',
+                '学习',
+                '资源',
+                '其他',
+              ]
                   .map((c) => DropdownMenuItem(value: c, child: Text(c)))
                   .toList(),
               onChanged: (v) => selectedCat = v ?? '其他',

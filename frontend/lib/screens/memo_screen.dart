@@ -19,7 +19,21 @@ class _MemoScreenState extends State<MemoScreen> {
   @override
   void initState() {
     super.initState();
-    _load();
+    _load().then((_) => _maybeOpenPrefilledEditor());
+  }
+
+  /// 从知识小馆等页面跳过来 + 带预填内容时，自动打开编辑器
+  void _maybeOpenPrefilledEditor() {
+    final args = Get.arguments;
+    if (args is Map &&
+        (args['prefill_title'] != null || args['prefill_content'] != null)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _showEditor(existing: {
+          'title': args['prefill_title'] ?? '',
+          'content': args['prefill_content'] ?? '',
+        });
+      });
+    }
   }
 
   Future<void> _load() async {

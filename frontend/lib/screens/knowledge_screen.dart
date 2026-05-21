@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import '../services/api_service.dart';
+import '../services/strength_engine.dart';
+import '../services/hitokoto_service.dart';
+import '../services/cycle_phase_knowledge.dart';
 import '../controllers/app_controller.dart';
 import '../widgets/tap_scale.dart';
 
@@ -87,6 +90,12 @@ class _KnowledgeScreenState extends State<KnowledgeScreen>
   String _selectedResCat = '全部';
 
   @override
+  // ── 今日推荐（根据 StrengthEngine 推荐模式动态挑选）─────
+  Map<String, dynamic>? _todayPick;
+  String? _todayPickModeLabel;
+  String? _todayPickRationale;
+  Color? _todayPickTint;
+
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
@@ -94,6 +103,196 @@ class _KnowledgeScreenState extends State<KnowledgeScreen>
     _resSearchCtrl.addListener(() => setState(() => _resQuery = _resSearchCtrl.text));
     _loadQuotes();
     _loadResources();
+    _loadTodayPick();
+  }
+
+  Future<void> _loadTodayPick() async {
+    final r = await StrengthEngine.compute();
+    // mode → 暖语类别映射（本地规则，无 AI 依赖）
+    final Set<String> cats;
+    switch (r.mode) {
+      case StrengthMode.light:    cats = {'治愈', '放松'}; break;
+      case StrengthMode.standard: cats = {'学习', '励志'}; break;
+      case StrengthMode.sprint:   cats = {'励志', '坚持'}; break;
+      case StrengthMode.restDay:  cats = {'放松', '治愈'}; break;
+      case StrengthMode.free:     cats = {'励志', '学习', '治愈', '坚持', '放松'}; break;
+    }
+
+    // 优先级：
+    //   1) 处于 pms / menstrual / luteal 阶段 → 用阶段专属暖句池（更贴当下）
+    //   2) 否则 → 一言公开 API（24h 缓存）
+    //   3) 都没有 → 本地预置暖句
+    Map<String, dynamic> pick;
+    final phase = await CyclePhaseKnowledge.inferCurrentPhase();
+    final phaseQuote = (phase == 'pms' || phase == 'menstrual' || phase == 'luteal')
+        ? CyclePhaseKnowledge.pickQuoteOfDay(phase)
+        : null;
+
+    if (phaseQuote != null) {
+      pick = {
+        'content': phaseQuote,
+        'author': '暖小圈',
+        'category': '阶段陪伴',
+        'source': '阶段',
+      };
+    } else {
+      final hito = await HitokotoService.getDailyQuote();
+      if (hito != null && (hito['content']?.isNotEmpty ?? false)) {
+        pick = {
+          'content': hito['content'],
+          'author': '一言',
+          'category': '今日推荐',
+          'source': '一言',
+        };
+      } else {
+        final pool = _sampleQuotes.where((q) => cats.contains(q['category'])).toList();
+        final candidates = pool.isEmpty
+            ? List<Map<String, dynamic>>.from(_sampleQuotes.map((e) => Map<String, dynamic>.from(e)))
+            : pool.map((e) => Map<String, dynamic>.from(e)).toList();
+        // 按日期 hash 选——同一天同一条，避免来回切换刷新
+        final today = DateTime.now().toIso8601String().substring(0, 10);
+        final seed = today.hashCode.abs();
+        pick = candidates[seed % candidates.length];
+      }
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _todayPick = pick;
+      _todayPickModeLabel = r.modeShortLabel;
+      _todayPickRationale = r.rationale;
+      _todayPickTint = Color(r.tintHex);
+    });
+  }
+
+  void _showPickRationale() {
+    final tint = _todayPickTint ?? Theme.of(context).primaryColor;
+    Get.dialog(
+      AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14.r)),
+        title: Row(children: [
+          Icon(Icons.auto_awesome, size: 16.sp, color: tint),
+          SizedBox(width: 6.w),
+          Text('为什么推荐这条',
+              style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w600)),
+        ]),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 9.w, vertical: 4.h),
+              decoration: BoxDecoration(
+                color: tint.withOpacity(0.14),
+                borderRadius: BorderRadius.circular(20.r),
+              ),
+              child: Text('${_todayPickModeLabel ?? "标准"} 模式',
+                  style: TextStyle(fontSize: 11.sp, color: tint, fontWeight: FontWeight.w600)),
+            ),
+            SizedBox(height: 10.h),
+            Text(_todayPickRationale ?? '',
+                style: TextStyle(fontSize: 13.sp, color: const Color(0xFF374151), height: 1.6)),
+            SizedBox(height: 10.h),
+            Text(
+              '根据你今天的状态 + 行为，引擎选了类别匹配当前节奏的暖句。每天 0 点自动换。',
+              style: TextStyle(fontSize: 11.sp, color: Colors.grey[500], height: 1.5),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Get.back(), child: const Text('知道了')),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTodayPickCard(ThemeData theme) {
+    if (_todayPick == null) return const SizedBox.shrink();
+    final tint = _todayPickTint ?? theme.primaryColor;
+    return Container(
+      margin: EdgeInsets.fromLTRB(16.w, 10.h, 16.w, 4.h),
+      padding: EdgeInsets.all(13.w),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [tint.withOpacity(0.13), tint.withOpacity(0.03)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(14.r),
+        border: Border.all(color: tint.withOpacity(0.28)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.auto_awesome, size: 13.sp, color: tint),
+              SizedBox(width: 5.w),
+              Text(
+                '今日推荐 · ${_todayPickModeLabel ?? ""}',
+                style: TextStyle(
+                    fontSize: 11.sp,
+                    color: tint,
+                    fontWeight: FontWeight.w600),
+              ),
+              const Spacer(),
+              GestureDetector(
+                onTap: _showPickRationale,
+                child: Container(
+                  padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
+                  decoration: BoxDecoration(
+                    color: tint.withOpacity(0.18),
+                    borderRadius: BorderRadius.circular(12.r),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.info_outline, size: 11.sp, color: tint),
+                      SizedBox(width: 3.w),
+                      Text(
+                        '为什么推荐',
+                        style: TextStyle(
+                            fontSize: 10.sp,
+                            color: tint,
+                            fontWeight: FontWeight.w500),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 8.h),
+          Text(
+            _todayPick!['content'] as String,
+            style: TextStyle(
+                fontSize: 13.sp,
+                color: const Color(0xFF1F2937),
+                height: 1.55,
+                fontWeight: FontWeight.w500),
+          ),
+          SizedBox(height: 6.h),
+          Text(
+            '— ${_todayPick!['author']} · ${_todayPick!['category']}',
+            style: TextStyle(fontSize: 10.sp, color: Colors.grey[500]),
+          ),
+          // 一言来源时显示来源标识（遵守 hitokoto.cn 开源协议要求）
+          if (_todayPick!['source'] == '一言') ...[
+            SizedBox(height: 4.h),
+            Row(
+              children: [
+                Icon(Icons.link, size: 10.sp, color: Colors.grey[400]),
+                SizedBox(width: 3.w),
+                Text(
+                  '预览来源：一言 hitokoto.cn',
+                  style: TextStyle(fontSize: 9.sp, color: Colors.grey[400]),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
   }
 
   // ── 过滤逻辑（本地预置数据也真正过滤）───────────────────
@@ -214,6 +413,8 @@ class _KnowledgeScreenState extends State<KnowledgeScreen>
   // ══ 暖语 Tab ══════════════════════════════════════════════
   Widget _buildQuotesTab(ThemeData theme) {
     return Column(children: [
+      // 今日推荐卡（按强度模式挑选，每日固定一条）
+      _buildTodayPickCard(theme),
       _buildSearchBar(_quoteSearchCtrl, '搜索暖句关键词…', theme),
       _buildHorizontalCats(_quoteCats, _selectedQuoteCat, (cat) => setState(() => _selectedQuoteCat = cat), theme),
       Expanded(
@@ -274,11 +475,53 @@ class _KnowledgeScreenState extends State<KnowledgeScreen>
               ),
             ],
             const Spacer(),
+            // 快捷"记到暖记"——把暖句带上下文塞到笔记
+            GestureDetector(
+              onTap: () => _quickMemo(
+                title: '收藏一句话',
+                content: q['content'] as String? ?? '',
+                source: q['author'] ?? q['userNickname'] ?? '暖小圈',
+              ),
+              child: Container(
+                padding: EdgeInsets.symmetric(
+                    horizontal: 6.w, vertical: 2.h),
+                margin: EdgeInsets.only(right: 6.w),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.6),
+                  borderRadius: BorderRadius.circular(4.r),
+                  border: Border.all(color: c[1].withOpacity(0.5)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.bookmark_add_outlined,
+                        size: 10.sp, color: c[1]),
+                    SizedBox(width: 2.w),
+                    Text('记到暖记',
+                        style: TextStyle(
+                            fontSize: 10.sp, color: c[1])),
+                  ],
+                ),
+              ),
+            ),
             Text(q['author'] ?? q['userNickname'] ?? '暖小圈', style: TextStyle(fontSize: 11.sp, color: Colors.grey[500])),
           ]),
         ]),
       ),
     );
+  }
+
+  /// 快速跳到暖记并预填内容（带当前推荐模式标签 + 来源）
+  void _quickMemo({required String title, required String content, String? source}) {
+    final mode = _todayPickModeLabel ?? '';
+    final tag = mode.isNotEmpty ? '#${mode}' : '';
+    final src = source != null ? '\n— $source' : '';
+    final body = '$content$src\n\n$tag';
+    Get.toNamed('/memo', arguments: {
+      'prefill_title': title,
+      'prefill_content': body,
+      'source_screen': 'knowledge',
+    });
   }
 
   // ══ 存知 Tab ══════════════════════════════════════════════
@@ -400,7 +643,41 @@ class _KnowledgeScreenState extends State<KnowledgeScreen>
           SizedBox(height: 6.h),
           Text(r['content'] ?? '', style: TextStyle(fontSize: 13.sp, color: Colors.grey[600], height: 1.5), maxLines: 4, overflow: TextOverflow.ellipsis),
           SizedBox(height: 8.h),
-          Text(r['userNickname'] ?? '暖小圈', style: TextStyle(fontSize: 11.sp, color: Colors.grey[400])),
+          Row(children: [
+            Text(r['userNickname'] ?? '暖小圈', style: TextStyle(fontSize: 11.sp, color: Colors.grey[400])),
+            const Spacer(),
+            // 快捷"记到暖记"
+            GestureDetector(
+              onTap: () => _quickMemo(
+                title: r['title'] as String? ?? '学习笔记',
+                content: r['content'] as String? ?? '',
+                source: '知识小馆·${r['category'] ?? "学习"}',
+              ),
+              child: Container(
+                padding: EdgeInsets.symmetric(
+                    horizontal: 7.w, vertical: 3.h),
+                decoration: BoxDecoration(
+                  color: theme.primaryColor.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(6.r),
+                  border: Border.all(
+                      color: theme.primaryColor.withOpacity(0.25)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.bookmark_add_outlined,
+                        size: 11.sp, color: theme.primaryColor),
+                    SizedBox(width: 3.w),
+                    Text('记到暖记',
+                        style: TextStyle(
+                            fontSize: 10.sp,
+                            color: theme.primaryColor,
+                            fontWeight: FontWeight.w500)),
+                  ],
+                ),
+              ),
+            ),
+          ]),
         ]),
       ),
     );

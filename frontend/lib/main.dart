@@ -24,6 +24,8 @@ import 'screens/feedback_screen.dart';
 import 'screens/warmcare_screen.dart';
 import 'controllers/app_controller.dart';
 import 'screens/study_room_screen.dart';
+import 'screens/interest_prefs_screen.dart';
+import 'services/behavior_tracker.dart';
 
 // ============================================================
 // main函数：程序的起点，async 表示里面有需要等待的操作
@@ -36,8 +38,11 @@ void main() async {
   await ApiService().init();
 
   Get.put(AppController());
-  // 提前注册，保证全局光影进度条可在任意页面读取计时状态
-  Get.put(StudyRoomController(), permanent: true);
+  // 自习室计时器双实例：lobby（外页个人专注）+ room（房间内共同专注），互不同步
+  Get.put(StudyRoomController(), tag: StudyRoomController.lobbyTag, permanent: true);
+  Get.put(StudyRoomController(), tag: StudyRoomController.roomTag, permanent: true);
+  // 行为感知 & 主动干预（idle 检测 + 微休息弹窗）
+  Get.put(BehaviorTracker(), permanent: true);
 
   runApp(const WarmCircleApp());
 }
@@ -96,11 +101,17 @@ class _WarmCircleAppState extends State<WarmCircleApp> {
           title: '暖小圈',
           debugShowCheckedModeBanner: false, // 去掉右上角 DEBUG 红色标签
           theme: AppThemes.getTheme(_currentTheme),
-          home: const MainScreen(),
+          home: const SplashScreen(), // 改为启动页
           locale: const Locale('zh', 'CN'),
           getPages: [
+            GetPage(name: '/splash',         page: () => const SplashScreen()),
             GetPage(name: '/login',          page: () => const LoginScreen()),
             GetPage(name: '/main',           page: () => const MainScreen()),
+            GetPage(name: '/profile',        page: () => const SimpleContentScreen(
+              title: '个人资料',
+              emptyIcon: Icons.person_outline,
+              emptyText: '个人资料功能开发中',
+            )),
             GetPage(name: '/ai-chat',        page: () => const XiaoNuanScreen()),
             GetPage(name: '/create-plan',    page: () => const XiaoNuanScreen()),
             GetPage(name: '/memo',           page: () => const MemoScreen()),
@@ -133,6 +144,7 @@ class _WarmCircleAppState extends State<WarmCircleApp> {
             )),
             GetPage(name: '/feedback',       page: () => const FeedbackScreen()),
             GetPage(name: '/warmcare',       page: () => const WarmCareScreen()),
+            GetPage(name: '/interest-prefs', page: () => const InterestPrefsScreen()),
           ],
           // 把 changeTheme 方法存到全局控制器，方便其他页面调用
           builder: (context, widget) {

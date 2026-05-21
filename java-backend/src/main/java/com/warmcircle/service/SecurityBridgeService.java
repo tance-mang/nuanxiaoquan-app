@@ -13,7 +13,7 @@ import java.util.Map;
  *
  * 分工说明：
  *  - Java 负责业务逻辑（用户、记账、学习计划等）
- *  - Python 负责安全检测（链接过滤、WAF、爬虫）
+ *  - Python 负责安全检测（链接过滤、WAF）
  *  - 每次用户发布内容前，Java 调用 Python 先检测
  *
  * 好处：

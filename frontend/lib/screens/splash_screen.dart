@@ -1,6 +1,6 @@
 // ============================================================
 // 文件：screens/splash_screen.dart
-// 作用：启动页 - 加入粒子特效 + 暖小圈品牌动画（v2.0 升级版）
+// 作用：启动页 - 加入粒子特效 + 暖小圈品牌动画
 // ============================================================
 
 import 'package:flutter/material.dart';
@@ -59,7 +59,11 @@ class _SplashScreenState extends State<SplashScreen>
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [Color(0xFFFFF3E0), Color(0xFFFFE0B2), Color(0xFFFFCCBC)],
+                colors: [
+                  Color(0xFFFFF3E0),
+                  Color(0xFFFFE0B2),
+                  Color(0xFFFFCCBC)
+                ],
               ),
             ),
           ),
@@ -115,15 +119,6 @@ class _SplashScreenState extends State<SplashScreen>
                         letterSpacing: 4,
                       ),
                     ),
-                    SizedBox(height: 8.h),
-                    Text(
-                      '记账 · 生理期 · 学习  三合一工具',
-                      style: TextStyle(
-                        fontSize: 13.sp,
-                        color: const Color(0xFF8D6E63),
-                        letterSpacing: 1,
-                      ),
-                    ),
                     SizedBox(height: 40.h),
                     SizedBox(
                       width: 24.w,
@@ -147,7 +142,7 @@ class _SplashScreenState extends State<SplashScreen>
             left: 0,
             right: 0,
             child: Text(
-              'v2.0  Java + Python + Flutter',
+              'v1.1',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 11.sp, color: const Color(0xFFBCAAA4)),
             ),

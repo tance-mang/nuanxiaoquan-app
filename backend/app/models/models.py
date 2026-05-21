@@ -44,9 +44,9 @@ class StudyPlan(Base):
 
 class Resource(Base):
     __tablename__ = "resources"
-    
+
     id = Column(Integer, primary_key=True, index=True)
-    type = Column(Enum('官方爬虫', '用户上传'), nullable=False)
+    type = Column(Enum('官方预置', '用户上传'), nullable=False)
     uploader_id = Column(Integer, ForeignKey('users.id'), nullable=True)
     title = Column(String(200), nullable=False)
     description = Column(Text)
@@ -76,18 +76,6 @@ class UserBehavior(Base):
     
     user = relationship("User", back_populates="behaviors")
     resource = relationship("Resource", back_populates="behaviors")
-
-class DailyQuote(Base):
-    __tablename__ = "daily_quotes"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    content = Column(Text, nullable=False)
-    author = Column(String(50))
-    category = Column(Enum('励志', '学习', '人生', '情感'), default='励志')
-    source = Column(String(100))
-    crawl_time = Column(DateTime, default=datetime.now)
-    is_shown = Column(Boolean, default=False)
-    show_date = Column(DateTime)
 
 class Accounting(Base):
     __tablename__ = "accounting"

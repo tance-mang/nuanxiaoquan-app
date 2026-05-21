@@ -6,6 +6,10 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../widgets/tap_scale.dart';
+import '../widgets/state_trend_bar.dart';
+import '../widgets/today_focus_card.dart';
+import '../widgets/start_study_cta.dart';
+import '../controllers/app_controller.dart';
 
 // ── 粒子特效 Painter ──────────────────────────────────────────
 class _SparkPainter extends CustomPainter {
@@ -91,6 +95,12 @@ class _PlanCard extends StatefulWidget {
   final VoidCallback onEdit;
   final VoidCallback onDelete;
   final int listIndex;
+  /// C 类：今日状态偏低（精力≤4 或 痛经/焦虑/累），第一张卡显示"今天轻量版"
+  final bool isLowStateToday;
+  /// 用户挑选的"今日必保"计划 → 该卡片显示绿色徽章 + 排到第一位
+  final bool isMustDo;
+  /// 用户长按弹出菜单时切换 must-do 选择
+  final VoidCallback onToggleMustDo;
 
   const _PlanCard({
     Key? key,
@@ -103,6 +113,9 @@ class _PlanCard extends StatefulWidget {
     required this.onEdit,
     required this.onDelete,
     required this.listIndex,
+    required this.onToggleMustDo,
+    this.isLowStateToday = false,
+    this.isMustDo = false,
   }) : super(key: key);
 
   @override
@@ -212,6 +225,130 @@ class _PlanCardState extends State<_PlanCard> with TickerProviderStateMixin {
     }
   }
 
+  /// 长按 plan 卡 → 弹底部菜单（编辑 / 设为必保 / 删除）
+  void _showCardMenu() {
+    HapticFeedback.selectionClick();
+    final isMustDo = widget.isMustDo;
+    showModalBottomSheet(
+      context: context,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16.r)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(20.w, 12.h, 20.w, 16.h),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 36.w,
+                  height: 4.h,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2.r),
+                  ),
+                ),
+              ),
+              SizedBox(height: 14.h),
+              Text(
+                widget.plan['title'] as String? ?? '我的计划',
+                style: TextStyle(
+                  fontSize: 14.sp,
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF111827),
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              SizedBox(height: 12.h),
+              _menuRow(
+                icon: Icons.shield_outlined,
+                title: isMustDo ? '取消今日必保' : '设为今日必保',
+                desc: isMustDo
+                    ? '不再优先显示这一项'
+                    : '把它排到第一位，并给绿色徽章',
+                tint: const Color(0xFF047857),
+                onTap: () {
+                  Navigator.of(ctx).pop();
+                  widget.onToggleMustDo();
+                },
+              ),
+              _menuRow(
+                icon: Icons.edit_outlined,
+                title: '编辑',
+                desc: '改名 / 内容 / 任务',
+                tint: widget.primary,
+                onTap: () {
+                  Navigator.of(ctx).pop();
+                  widget.onEdit();
+                },
+              ),
+              _menuRow(
+                icon: Icons.delete_outline,
+                title: '删除',
+                desc: '从列表中移除',
+                tint: const Color(0xFFE11D48),
+                onTap: () {
+                  Navigator.of(ctx).pop();
+                  widget.onDelete();
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _menuRow({
+    required IconData icon,
+    required String title,
+    required String desc,
+    required Color tint,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10.r),
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 10.h),
+        child: Row(
+          children: [
+            Container(
+              width: 32.w,
+              height: 32.w,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: tint.withOpacity(0.14),
+              ),
+              child: Icon(icon, size: 16.sp, color: tint),
+            ),
+            SizedBox(width: 10.w),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: TextStyle(
+                          fontSize: 13.sp,
+                          fontWeight: FontWeight.w600,
+                          color: const Color(0xFF111827))),
+                  SizedBox(height: 2.h),
+                  Text(desc,
+                      style: TextStyle(
+                          fontSize: 11.sp, color: Colors.grey[500])),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, size: 18.sp, color: Colors.grey[300]),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final primary = widget.primary;
@@ -233,6 +370,8 @@ class _PlanCardState extends State<_PlanCard> with TickerProviderStateMixin {
       return GestureDetector(
         onHorizontalDragUpdate: (d) => _onDragUpdate(d, cardWidth),
         onHorizontalDragEnd: (d) => _onDragEnd(d, cardWidth),
+        // 长按弹菜单：设为/取消「今日必保」
+        onLongPress: () => _showCardMenu(),
         child: Container(
           margin: EdgeInsets.only(bottom: 10.h),
           decoration: BoxDecoration(
@@ -314,6 +453,34 @@ class _PlanCardState extends State<_PlanCard> with TickerProviderStateMixin {
                           style: TextStyle(
                               fontSize: 14.sp, fontWeight: FontWeight.w600)),
                     ),
+                    // 基础任务"保险箱"：用户长按选定的「今日必保」计划得到绿色徽章
+                    // 状态差时这条 100% 可完成 → 维持心理安全感
+                    if (widget.isMustDo && !_todayDone)
+                      Container(
+                        margin: EdgeInsets.only(right: 6.w),
+                        padding: EdgeInsets.symmetric(
+                            horizontal: 7.w, vertical: 2.h),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFD1FAE5),
+                          borderRadius: BorderRadius.circular(8.r),
+                          border:
+                              Border.all(color: const Color(0xFFA7F3D0)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.shield_outlined,
+                                size: 11.sp,
+                                color: const Color(0xFF047857)),
+                            SizedBox(width: 3.w),
+                            Text('今日必保',
+                                style: TextStyle(
+                                    fontSize: 10.sp,
+                                    color: const Color(0xFF047857),
+                                    fontWeight: FontWeight.w600)),
+                          ],
+                        ),
+                      ),
                     if (streak >= 3)
                       Container(
                         margin: EdgeInsets.only(right: 6.w),
@@ -322,7 +489,7 @@ class _PlanCardState extends State<_PlanCard> with TickerProviderStateMixin {
                           color: Colors.orange.withOpacity(0.10),
                           borderRadius: BorderRadius.circular(8.r),
                         ),
-                        child: Text('🔥$streak天',
+                        child: Text('$streak天',
                             style: TextStyle(
                                 fontSize: 10.sp, color: Colors.orange[700])),
                       ),
@@ -349,6 +516,9 @@ class _PlanCardState extends State<_PlanCard> with TickerProviderStateMixin {
                             style: TextStyle(fontSize: 10.sp, color: primary)),
                       ),
                   ])),  // closes Row + GestureDetector
+
+                  // 注：plan 卡上不再重复显示"今天轻量版"，
+                  // 同样的提示已经由首页顶部的全局推荐行（_stateRecommendation）承担
 
                   SizedBox(height: 8.h),
 
@@ -550,6 +720,19 @@ class _HomeScreenState extends State<HomeScreen>
   final Set<String> _expandedIds = {};
   static const _plansKey = 'home_user_plans_v2';
 
+  // ── C 类状态采集（最小起步）─────────────────────────────────
+  // 仅前端本地采集，按日期 key 存 SharedPreferences。
+  // 后续 C 类规则引擎会消费这份数据（精力 + 不适标签 → 任务推荐策略）。
+  Map<String, dynamic>? _todayState;
+  bool _stateExpanded = false;
+  int _editingEnergy = 6;
+  String? _editingCondition;
+
+  /// 用户手动指定的"今日必保"计划 ID（null = 没选）
+  /// 持久化到 SharedPreferences key 'must_do_plan_id'，跨日保留直到用户改
+  String? _mustDoPlanId;
+  static const _mustDoKey = 'must_do_plan_id';
+
   late AnimationController _breathCtrl;
   late Animation<double> _breathAnim;
 
@@ -557,7 +740,7 @@ class _HomeScreenState extends State<HomeScreen>
   static final _defaultPlans = [
     {
       'id': 'default_morning',
-      'title': '🌅 晨间习惯养成 21 天',
+      'title': '晨间习惯养成 21 天',
       'content': '培养早起、冥想、阅读三件事，21 天形成肌肉记忆。',
       'duration': 21,
       'dailyTasks': [
@@ -575,7 +758,7 @@ class _HomeScreenState extends State<HomeScreen>
     },
     {
       'id': 'default_english',
-      'title': '📖 考研英语备考 60 天',
+      'title': '考研英语备考 60 天',
       'content': '每日三步走，60 天稳扎稳打攻克考研英语阅读与写作。',
       'duration': 60,
       'dailyTasks': [
@@ -602,6 +785,125 @@ class _HomeScreenState extends State<HomeScreen>
     _breathAnim = Tween<double>(begin: 1.0, end: 1.022).animate(
         CurvedAnimation(parent: _breathCtrl, curve: Curves.easeInOut));
     _loadPlans();
+    _loadTodayState();
+    _loadMustDoId();
+  }
+
+  // ── 加载/保存 今日状态 ────────────────────────────────────
+  String _stateKey() => 'daily_state_${_todayStr()}';
+
+  Future<void> _loadMustDoId() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() => _mustDoPlanId = prefs.getString(_mustDoKey));
+  }
+
+  Future<void> _setMustDoPlan(String? id) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (id == null) {
+      await prefs.remove(_mustDoKey);
+    } else {
+      await prefs.setString(_mustDoKey, id);
+    }
+    if (!mounted) return;
+    setState(() => _mustDoPlanId = id);
+  }
+
+  /// 切换某个 plan 为必保 / 取消（若已经是必保则取消）
+  void _toggleMustDo(String planId) {
+    if (_mustDoPlanId == planId) {
+      _setMustDoPlan(null);
+    } else {
+      _setMustDoPlan(planId);
+    }
+  }
+
+  /// 排序：用户挑的「今日必保」永远排第一位，其他按原顺序
+  List<Map<String, dynamic>> get _sortedPlans {
+    if (_mustDoPlanId == null) return _userPlans;
+    final mustDo = _userPlans.where((p) => p['id'] == _mustDoPlanId);
+    if (mustDo.isEmpty) return _userPlans;
+    final others = _userPlans.where((p) => p['id'] != _mustDoPlanId);
+    return [...mustDo, ...others];
+  }
+
+  Future<void> _loadTodayState() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_stateKey());
+    if (!mounted) return;
+    setState(() {
+      if (raw != null) {
+        _todayState = jsonDecode(raw) as Map<String, dynamic>;
+        _editingEnergy = (_todayState!['energy'] as int?) ?? 6;
+        _editingCondition = _todayState!['condition'] as String?;
+      }
+    });
+  }
+
+  Future<void> _saveTodayState() async {
+    final prefs = await SharedPreferences.getInstance();
+    final m = {
+      'date': _todayStr(),
+      'energy': _editingEnergy,
+      'condition': _editingCondition,
+      'savedAt': DateTime.now().toIso8601String(),
+    };
+    await prefs.setString(_stateKey(), jsonEncode(m));
+    if (!mounted) return;
+    setState(() {
+      _todayState = m;
+      _stateExpanded = false;
+    });
+    // 清掉"请求编辑状态"标志，让卡片重新折叠（实际是隐藏）
+    Get.find<AppController>().clearEditState();
+  }
+
+  /// C 类：今日是否处于"状态偏低"
+  ///
+  /// 判定规则（命中任一即为低状态）：
+  ///   1. energy <= 4：自评精力 1-10 分中 4 分及以下，明显的低能量
+  ///   2. condition == '痛经不适'：女性用户主动选择，身体不适
+  ///   3. condition == '焦虑'：情绪压力高，认知负荷敏感
+  ///   4. condition == '有点累'：精力虽然中等但已被自评累
+  ///
+  /// 中性（不命中）的情况会被推荐成"中性 → 不打扰"，避免误判。
+  ///
+  /// 数据源：SharedPreferences key 'daily_state_<YYYY-MM-DD>'
+  /// 写入方：HomeScreen `_saveTodayState`（用户主动"记一下"）
+  /// 消费方：
+  ///   - 首页顶部推荐行 `_stateRecommendation`
+  ///   - （已删）plan 卡的"今天轻量版" subline，避免重复
+  bool get _isLowStateToday {
+    if (_todayState == null) return false;
+    final e = _todayState!['energy'] as int? ?? 6;
+    final c = _todayState!['condition'] as String?;
+    return e <= 4 ||
+        c == '痛经不适' ||
+        c == '焦虑' ||
+        c == '有点累';
+  }
+
+  // ── C 类规则起步：把今日状态映射为一句温和建议 ──────────────
+  // 注意：这只是提示，不替用户做决定，不弹窗
+  // 返回 (emoji+文案, color) 或 null（中性状态不打扰）
+  ({String text, Color tint})? _stateRecommendation(Color primary) {
+    if (_todayState == null) return null;
+    final e = _todayState!['energy'] as int? ?? 6;
+    final c = _todayState!['condition'] as String?;
+    final isNegCond = c == '痛经不适' || c == '焦虑' || c == '有点累';
+    if (e >= 8 && !isNegCond) {
+      return (
+        text: '✨ 状态不错，今天可以挑战难一点的任务',
+        tint: const Color(0xFF6CB87C),
+      );
+    }
+    if (e <= 4 || isNegCond) {
+      return (
+        text: '🌿 今天先轻量为主，完成基础打卡就够',
+        tint: const Color(0xFFE08A6E),
+      );
+    }
+    return null;
   }
 
   @override
@@ -695,6 +997,27 @@ class _HomeScreenState extends State<HomeScreen>
 
     setState(() => _userPlans[index] = plan);
     _savePlans();
+
+    // C 类强反馈：完成"今日必保"任务时给一个去评价化的鼓励 snackbar
+    // 现在挂在用户挑选的「今日必保」计划上，不再固定在第一条
+    final completedId = plan['id'] as String?;
+    if (!alreadyDone && completedId == _mustDoPlanId && _mustDoPlanId != null) {
+      final encouragement = _isLowStateToday
+          ? '今天状态不在最佳，能完成基础就够了'
+          : '基础骨架稳稳的，进阶任务可以慢慢来';
+      Get.snackbar(
+        '🛡 今日必保 已完成',
+        encouragement,
+        snackPosition: SnackPosition.TOP,
+        backgroundColor: const Color(0xFFD1FAE5),
+        colorText: const Color(0xFF065F46),
+        margin: EdgeInsets.all(14.w),
+        borderRadius: 12,
+        duration: const Duration(seconds: 3),
+        icon: const Icon(Icons.shield_outlined,
+            color: Color(0xFF047857)),
+      );
+    }
   }
 
   // ── 勾选单个小任务 ────────────────────────────────────────────
@@ -789,6 +1112,144 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
+  // ─────────────────────────────────────────────────────────────
+  // 今日状态采集卡（C 类最小起步）
+  // 已记录：紧凑摘要 + 调整入口
+  // 未记录或调整中：精力滑块 1-10 + 状态 chip + 保存按钮
+  // ─────────────────────────────────────────────────────────────
+  Widget _buildDailyStateCard(Color primary) {
+    // 状态已记录 → 隐藏整个卡，不再与 hero CTA 重复显示
+    // （hero CTA 顶部已经有"今天 · 状态XX"的 chip）
+    // 用户想调整 → hero CTA 右上 ⋯ 菜单的「调整今日状态」会触发 needsEditState=true
+    final ac = Get.find<AppController>();
+    final needsEdit = ac.needsEditState.value;
+    final logged = _todayState != null && !_stateExpanded && !needsEdit;
+    if (logged) {
+      return const SizedBox.shrink();
+    }
+    // 从更多菜单点了"调整今日状态"，强制展开
+    if (needsEdit && !_stateExpanded) {
+      _stateExpanded = true;
+    }
+
+    // 痛经不适仅女性用户显示（且不假设每个女生都受影响——只是提供这个选项）
+    final isFemale = Get.find<AppController>().userGender.value == 'female';
+    final conditions = <String>[
+      '精力很好',
+      '一般',
+      '有点累',
+      if (isFemale) '痛经不适',
+      '焦虑',
+    ];
+    final eColor = Color.lerp(
+        const Color(0xFF6FA8FF), primary, _editingEnergy / 10.0)!;
+    return Container(
+      margin: EdgeInsets.only(bottom: 16.h),
+      padding: EdgeInsets.fromLTRB(14.w, 12.h, 14.w, 14.h),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14.r),
+        border: Border.all(color: primary.withOpacity(0.10)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Text('今日状态',
+                style: TextStyle(
+                    fontSize: 14.sp,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF2D2D2D))),
+            const Spacer(),
+            Text('精力 $_editingEnergy/10',
+                style: TextStyle(fontSize: 12.sp, color: eColor)),
+          ]),
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              activeTrackColor: eColor,
+              inactiveTrackColor: Colors.grey.shade200,
+              thumbColor: eColor,
+              overlayColor: eColor.withOpacity(0.15),
+              trackHeight: 3,
+            ),
+            child: Slider(
+              value: _editingEnergy.toDouble(),
+              min: 1,
+              max: 10,
+              divisions: 9,
+              onChanged: (v) =>
+                  setState(() => _editingEnergy = v.round()),
+            ),
+          ),
+          Wrap(
+            spacing: 6.w,
+            runSpacing: 6.h,
+            children: conditions.map((c) {
+              final selected = _editingCondition == c;
+              return GestureDetector(
+                onTap: () => setState(() =>
+                    _editingCondition = selected ? null : c),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  padding: EdgeInsets.symmetric(
+                      horizontal: 10.w, vertical: 5.h),
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? primary.withOpacity(0.12)
+                        : Colors.grey.shade50,
+                    borderRadius: BorderRadius.circular(20.r),
+                    border: Border.all(
+                      color: selected
+                          ? primary.withOpacity(0.6)
+                          : Colors.grey.shade200,
+                    ),
+                  ),
+                  child: Text(c,
+                      style: TextStyle(
+                          fontSize: 12.sp,
+                          color: selected ? primary : Colors.grey[700],
+                          fontWeight: selected
+                              ? FontWeight.w600
+                              : FontWeight.normal)),
+                ),
+              );
+            }).toList(),
+          ),
+          SizedBox(height: 10.h),
+          Row(children: [
+            const Spacer(),
+            if (_stateExpanded)
+              GestureDetector(
+                onTap: () => setState(() => _stateExpanded = false),
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 10.w),
+                  child: Text('取消',
+                      style: TextStyle(
+                          fontSize: 12.sp, color: Colors.grey[500])),
+                ),
+              ),
+            GestureDetector(
+              onTap: _saveTodayState,
+              child: Container(
+                padding: EdgeInsets.symmetric(
+                    horizontal: 16.w, vertical: 7.h),
+                decoration: BoxDecoration(
+                  color: primary,
+                  borderRadius: BorderRadius.circular(20.r),
+                ),
+                child: Text('记一下',
+                    style: TextStyle(
+                        fontSize: 12.sp,
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600)),
+              ),
+            ),
+          ]),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final primary = Theme.of(context).primaryColor;
@@ -821,11 +1282,26 @@ class _HomeScreenState extends State<HomeScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Hero CTA：核心闭环入口，状态 + 推荐模式 + 一键开始学习
+              const StartStudyCta(),
               _buildTodaySummary(primary),
+              // 今日累计专注（仅当今日已专注 > 0 秒时显示）
+              const TodayFocusCard(),
+              // 最近 7 天精力趋势（仅当有任意一天数据时才显示）
+              const StateTrendBar(),
+              // 今日状态输入卡：未记录时显示完整表单，已记录后隐藏
+              // （已记录时由 hero CTA 顶部 chip 显示状态结论，避免重复）
+              // 调整入口：hero CTA ⋯ 菜单的「调整今日状态」会请求展开
+              Obx(() {
+                // 触达 needsEditState 让 Obx 重建
+                Get.find<AppController>().needsEditState.value;
+                return _buildDailyStateCard(primary);
+              }),
+              // 旧的"推荐行"已删除：hero CTA 的 rationale 已经覆盖同样信息
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('📚 我的学习计划',
+                  Text('我的学习计划',
                       style: TextStyle(fontSize: 17.sp,
                           fontWeight: FontWeight.bold,
                           color: const Color(0xFF2D2D2D))),
@@ -858,22 +1334,30 @@ class _HomeScreenState extends State<HomeScreen>
                   proxyDecorator: (child, _, __) =>
                       Material(color: Colors.transparent,
                           elevation: 8, child: child),
-                  children: _userPlans.asMap().entries.map((e) {
+                  children: _sortedPlans.asMap().entries.map((e) {
                     final id = e.value['id'] as String;
+                    // 找到该计划在原始 _userPlans 里的真实索引（操作需要用真实索引）
+                    final realIdx =
+                        _userPlans.indexWhere((p) => p['id'] == id);
                     return _PlanCard(
                       key: ValueKey(id),
                       plan: e.value,
                       primary: primary,
                       isExpanded: _expandedIds.contains(id),
                       listIndex: e.key,
-                      onCompleteDay: () => _completeToday(e.key),
-                      onToggleTask: (tid) => _toggleTask(e.key, tid),
+                      isLowStateToday: _isLowStateToday,
+                      isMustDo: id == _mustDoPlanId,
+                      onCompleteDay: () => _completeToday(realIdx),
+                      onToggleTask: (tid) => _toggleTask(realIdx, tid),
                       onToggleExpand: () => _toggleExpand(id),
-                      onEdit: () => _editPlan(e.value, e.key),
+                      onEdit: () => _editPlan(e.value, realIdx),
                       onDelete: () {
-                        setState(() => _userPlans.removeAt(e.key));
+                        // 如果删的是必保 plan，清掉必保
+                        if (id == _mustDoPlanId) _setMustDoPlan(null);
+                        setState(() => _userPlans.removeAt(realIdx));
                         _savePlans();
                       },
+                      onToggleMustDo: () => _toggleMustDo(id),
                     );
                   }).toList(),
                 ),

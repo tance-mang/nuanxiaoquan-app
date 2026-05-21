@@ -10,23 +10,22 @@ python-multipart==0.0.6
 pydantic==2.5.3
 pydantic-settings==2.1.0
 requests==2.31.0
-beautifulsoup4==4.12.3
-schedule==1.2.1
 pillow==10.2.0
 python-dotenv==1.0.0
 
-# 豆包AI SDK
-volcengine-python-sdk==1.0.98
-
-# 阿里云OSS
+# 阿里云OSS（如不上传文件可以删）
 oss2==2.18.4
 
-# 数据分析
+# 数据分析（本地确定性算法用）
 pandas==2.1.4
 numpy==1.26.3
 
-# 短信服务
+# 短信服务（注册验证码用，如未启用可删）
 tencentcloud-sdk-python==3.0.1074
 
-# 任务队列
+# 任务队列（如未启用可删）
 celery==5.3.4
+
+# 说明：
+# 1. 每日推荐暖句由前端直接走一言公开 API（hitokoto.cn），后端不依赖。
+# 2. 豆包调用走标准 HTTPS（requests）——火山方舟 v3 兼容 OpenAI 接口格式，不需要专用 SDK。

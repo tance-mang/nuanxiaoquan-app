@@ -36,8 +36,38 @@ class AppController extends GetxController {
   final RxString currentUserAvatar = ''.obs;
 
   // 用户性别（'male'/'female'/'unknown'）
-  // 生理期功能仅在 female 时解锁
+  // 暖圈关怀功能仅在 female 时解锁
   final RxString userGender = 'unknown'.obs;
+
+  // 微休息提示总开关（用户可在设置里关掉，关掉后 BehaviorTracker 不再弹窗）
+  final RxBool microRestEnabled = true.obs;
+
+  // 微休息触发阈值（分钟），用户可在设置里调 1-10，默认 3
+  final RxInt microRestIdleMinutes = 3.obs;
+
+  // 引导风格：'autonomous' / 'light' / 'strong'
+  //   autonomous = 自主型：CTA 给建议但不强推，按钮简洁
+  //   light      = 轻引导（默认）：CTA 推荐 + rationale + 大按钮
+  //   strong     = 强引导：CTA 文案更主动（"立即开始"）+ 引擎时长自动写入
+  final RxString guidancePreference = 'light'.obs;
+
+  // 跨 widget 触发：用户在 hero CTA 的"…菜单"点了「调整今日状态」
+  // → 首页的状态卡读到这个，强制展开输入表单
+  final RxBool needsEditState = false.obs;
+  void requestEditState() => needsEditState.value = true;
+  void clearEditState() => needsEditState.value = false;
+
+  // ── 小暖主动开口（PP 宠物式陪伴）────────────────────────
+  // 任意 widget 调用 tellCompanion(text) → AiFloatButton 监听到后弹气泡
+  // 用 seq 自增确保相同文本也能再次触发（普通 RxString set 相同值不触发）
+  final RxInt companionBubbleSeq = 0.obs;
+  String _companionBubbleText = '';
+  String get companionBubbleText => _companionBubbleText;
+  void tellCompanion(String text) {
+    if (text.isEmpty) return;
+    _companionBubbleText = text;
+    companionBubbleSeq.value = companionBubbleSeq.value + 1;
+  }
 
   // 星途学阶等级（日常学习打卡等级）
   final RxInt studyLevel = 1.obs;
@@ -58,7 +88,7 @@ class AppController extends GetxController {
   // 是否已登录
   bool get isLoggedIn => currentUserId.value > 0;
 
-  // 是否解锁生理期功能（仅女性用户）
+  // 是否解锁暖圈关怀功能（仅女性用户）
   bool get isMenstrualUnlocked => userGender.value == 'female';
 
   @override
@@ -73,6 +103,12 @@ class AppController extends GetxController {
 
     aiButtonMode.value = prefs.getInt('ai_button_mode') ?? 1;
     showDailyGreeting.value = prefs.getBool('show_daily_greeting') ?? true;
+    microRestEnabled.value = prefs.getBool('micro_rest_enabled') ?? true;
+    microRestIdleMinutes.value =
+        (prefs.getInt('micro_rest_idle_minutes') ?? 3).clamp(1, 10);
+    final gp = prefs.getString('guidance_pref') ?? 'light';
+    guidancePreference.value =
+        (gp == 'autonomous' || gp == 'strong') ? gp : 'light';
     currentUserId.value = prefs.getInt('user_id') ?? 0;
     currentUserName.value = prefs.getString('user_name') ?? '';
     currentUserAvatar.value = prefs.getString('user_avatar') ?? '';
@@ -89,6 +125,29 @@ class AppController extends GetxController {
     aiButtonMode.value = mode;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('ai_button_mode', mode);
+  }
+
+  // 设置微休息开关
+  Future<void> setMicroRestEnabled(bool v) async {
+    microRestEnabled.value = v;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('micro_rest_enabled', v);
+  }
+
+  // 设置微休息阈值
+  Future<void> setMicroRestIdleMinutes(int minutes) async {
+    final clamped = minutes.clamp(1, 10);
+    microRestIdleMinutes.value = clamped;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('micro_rest_idle_minutes', clamped);
+  }
+
+  /// 设置引导风格
+  Future<void> setGuidancePreference(String pref) async {
+    if (pref != 'autonomous' && pref != 'light' && pref != 'strong') return;
+    guidancePreference.value = pref;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('guidance_pref', pref);
   }
 
   // 更新用户信息（登录成功后调用）
@@ -143,7 +202,7 @@ class AppController extends GetxController {
     await prefs.remove('token');
   }
 
-  // 更新性别（用于生理期功能解锁）
+  // 更新性别（用于暖圈关怀功能解锁）
   Future<void> updateGender(String gender) async {
     userGender.value = gender;
     final prefs = await SharedPreferences.getInstance();

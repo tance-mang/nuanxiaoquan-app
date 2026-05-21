@@ -86,6 +86,21 @@ class QuoteCard extends StatelessWidget {
             ],
           ),
 
+          // 来源为"一言"时显示来源标识（遵守 hitokoto.cn 开源协议要求）
+          if (quote['source'] == '一言') ...[
+            SizedBox(height: 6.h),
+            Row(
+              children: [
+                Icon(Icons.link, size: 11.sp, color: Colors.grey[400]),
+                SizedBox(width: 4.w),
+                Text(
+                  '预览来源：一言 hitokoto.cn',
+                  style: TextStyle(fontSize: 10.sp, color: Colors.grey[400]),
+                ),
+              ],
+            ),
+          ],
+
           // 操作按钮（收藏/分享），在知识小馆显示
           if (showActions) ...[
             SizedBox(height: 16.h),

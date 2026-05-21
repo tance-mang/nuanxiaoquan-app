@@ -7,14 +7,19 @@
 //   2. 根据 intent 决定显示哪种卡片：
 //      study_plan  → 学习计划确认卡（可编辑 + "设为今天计划"按钮）
 //      accounting  → 记账确认框（金额/分类/备注 + 确认记账）
-//      period      → 生理期建议卡（只展示，不操作）
+//      period      → 暖圈关怀建议卡（只展示，不操作）
 //      chat_redirect/general → 普通对话气泡
 //   3. 用户确认后，本地存储 or 调用对应 API
 // ============================================================
 
+import 'dart:convert';
+import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart' show Ticker;
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../controllers/app_controller.dart';
 import '../services/api_service.dart';
 import '../services/offline_calculator.dart';
 import '../widgets/particle_background.dart';
@@ -32,7 +37,18 @@ class _XiaoNuanScreenState extends State<XiaoNuanScreen> {
   final _api = ApiService();
 
   // 消息列表，每条 = {role: 'user'|'assistant', content: '...', action: {...}, intent: '...'}
-  final List<Map<String, dynamic>> _messages = [];
+  List<Map<String, dynamic>> _messages = [];
+
+  // ── 历史会话管理 ────────────────────────────────────────────
+  /// 当前会话 ID（毫秒时间戳字符串），重新开新对话时刷新
+  String _currentConvId =
+      DateTime.now().millisecondsSinceEpoch.toString();
+
+  /// 历史会话列表（不含当前），每条 = {id, title, updatedAt, messages: [...]}
+  /// 持久化到 SharedPreferences key 'xiaonuan_conversations'
+  List<Map<String, dynamic>> _conversations = [];
+  static const _convsKey = 'xiaonuan_conversations';
+  static const _maxConvs = 20;
 
   // 保留最近 6 轮对话作为上下文（不超发 token）
   List<Map<String, String>> get _history {
@@ -51,18 +67,91 @@ class _XiaoNuanScreenState extends State<XiaoNuanScreen> {
   @override
   void initState() {
     super.initState();
-    // 进入时显示小暖问候
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _addAssistantMsg(
-        '你好呀～我是小暖 🌸 我可以帮你：\n\n'
-        '📝 **生成学习计划**（告诉我学什么、学几天）\n'
-        '💰 **帮你记一笔账**（说"花了xx元买xx"）\n'
-        '🌙 **生理期建议**（问我"现在适合学习吗"）\n\n'
-        '说说看，今天想做什么？',
-        intent: 'greeting',
-        action: {},
-      );
+    _loadConversations().then((_) {
+      if (!mounted) return;
+      _addGreeting();
     });
+  }
+
+  void _addGreeting() {
+    // Greeting 的 content 在 _buildGreetingBubble 里写死，这里仅占位标记
+    _addAssistantMsg('', intent: 'greeting', action: {});
+  }
+
+  // ── 加载/保存历史会话 ───────────────────────────────────────
+  Future<void> _loadConversations() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_convsKey);
+    if (raw == null) return;
+    try {
+      final list = jsonDecode(raw) as List;
+      _conversations = list
+          .map((c) => Map<String, dynamic>.from(c as Map))
+          .toList();
+    } catch (_) {}
+  }
+
+  Future<void> _saveCurrentConv() async {
+    // 没有用户消息 → 这次对话没启动，不存
+    final hasUser = _messages.any((m) => m['role'] == 'user');
+    if (!hasUser) return;
+    // 抠出第一条用户消息作为标题
+    final first = _messages.firstWhere(
+      (m) => m['role'] == 'user',
+      orElse: () => {'content': ''},
+    )['content'] as String;
+    final title = first.length > 24 ? '${first.substring(0, 24)}…' : first;
+
+    final entry = {
+      'id': _currentConvId,
+      'title': title,
+      'updatedAt': DateTime.now().toIso8601String(),
+      // greeting 不需要持久化（每次新对话会自动加）
+      'messages': _messages
+          .where((m) => m['intent'] != 'greeting')
+          .toList(),
+    };
+
+    final idx = _conversations
+        .indexWhere((c) => c['id'] == _currentConvId);
+    if (idx >= 0) {
+      _conversations[idx] = entry;
+    } else {
+      _conversations.insert(0, entry);
+    }
+    if (_conversations.length > _maxConvs) {
+      _conversations = _conversations.sublist(0, _maxConvs);
+    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_convsKey, jsonEncode(_conversations));
+  }
+
+  void _startNewConversation() async {
+    await _saveCurrentConv();
+    if (!mounted) return;
+    setState(() {
+      _currentConvId =
+          DateTime.now().millisecondsSinceEpoch.toString();
+      _messages = [];
+    });
+    _addGreeting();
+  }
+
+  void _resumeConversation(Map<String, dynamic> conv) {
+    setState(() {
+      _currentConvId = conv['id'] as String;
+      _messages = List<Map<String, dynamic>>.from(conv['messages'] as List);
+    });
+    Navigator.of(context).pop(); // 关闭 drawer
+    _scrollToBottom();
+  }
+
+  Future<void> _deleteConversation(String id) async {
+    setState(() {
+      _conversations.removeWhere((c) => c['id'] == id);
+    });
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_convsKey, jsonEncode(_conversations));
   }
 
   @override
@@ -84,6 +173,7 @@ class _XiaoNuanScreenState extends State<XiaoNuanScreen> {
       _loading = true;
     });
     _scrollToBottom();
+    _saveCurrentConv();
 
     try {
       final resp = await _api.post('/ai/chat', body: {
@@ -117,6 +207,10 @@ class _XiaoNuanScreenState extends State<XiaoNuanScreen> {
   void _addAssistantMsg(String content,
       {required String intent, required Map<String, dynamic> action}) {
     setState(() {
+      // AI 真正回复了（intent ≠ greeting）→ 移除之前的 greeting 占位
+      if (intent != 'greeting') {
+        _messages.removeWhere((m) => m['intent'] == 'greeting');
+      }
       _messages.add({
         'role': 'assistant',
         'content': content,
@@ -125,6 +219,8 @@ class _XiaoNuanScreenState extends State<XiaoNuanScreen> {
       });
     });
     _scrollToBottom();
+    // 真实回复时落盘
+    if (intent != 'greeting') _saveCurrentConv();
   }
 
   void _scrollToBottom() {
@@ -147,19 +243,44 @@ class _XiaoNuanScreenState extends State<XiaoNuanScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Row(children: [
-          CircleAvatar(
-            radius: 14.r,
-            backgroundColor: theme.primaryColor,
-            child: Text('暖', style: TextStyle(color: Colors.white, fontSize: 11.sp, fontWeight: FontWeight.bold)),
+          // 顶栏小暖头像 —— 闲置慢呼吸，回答中加速且更亮
+          _XiaoNuanAvatar(
+            size: 28.w,
+            fontSize: 11,
+            isSpeaking: _loading,
           ),
-          SizedBox(width: 8.w),
+          SizedBox(width: 4.w),
           Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('小暖', style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.bold)),
-            Text('专注·记账·生理期·学习', style: TextStyle(fontSize: 10.sp, color: Colors.grey[500])),
+            // 标签栏 —— 暖圈关怀仅在女性用户解锁时露出，避免给其他用户"女性专属 App"印象
+            Obx(() {
+              final isFemale =
+                  Get.find<AppController>().userGender.value == 'female';
+              final tag = isFemale
+                  ? '专注·记账·暖圈关怀·学习'
+                  : '专注·记账·学习·成长';
+              return Text(tag,
+                  style: TextStyle(fontSize: 10.sp, color: Colors.grey[500]));
+            }),
           ]),
         ]),
         elevation: 0,
+        actions: [
+          IconButton(
+            tooltip: '新对话',
+            icon: const Icon(Icons.add_comment_outlined),
+            onPressed: _startNewConversation,
+          ),
+          Builder(
+            builder: (ctx) => IconButton(
+              tooltip: '历史对话',
+              icon: const Icon(Icons.history),
+              onPressed: () => Scaffold.of(ctx).openEndDrawer(),
+            ),
+          ),
+        ],
       ),
+      endDrawer: _buildHistoryDrawer(theme),
       body: Stack(
         children: [
           // 粒子背景（轻柔版）
@@ -183,7 +304,7 @@ class _XiaoNuanScreenState extends State<XiaoNuanScreen> {
               ),
             ),
 
-            // 输入栏
+            // 输入栏（快捷提问已挪到上面的问候气泡内）
             _buildInputBar(theme),
           ]),
         ],
@@ -234,37 +355,33 @@ class _XiaoNuanScreenState extends State<XiaoNuanScreen> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 小暖头像
-          Container(
-            width: 32.w, height: 32.w,
-            decoration: BoxDecoration(
-              color: Theme.of(context).primaryColor,
-              shape: BoxShape.circle,
-            ),
-            child: Center(child: Text('暖', style: TextStyle(color: Colors.white, fontSize: 12.sp, fontWeight: FontWeight.bold))),
-          ),
-          SizedBox(width: 8.w),
+          // 小暖头像 —— AI 回答中时全部头像同步加速呼吸
+          _XiaoNuanAvatar(size: 32.w, fontSize: 12, isSpeaking: _loading),
+          SizedBox(width: 4.w),
 
           Flexible(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 文字回复气泡
-                Container(
-                  padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 10.h),
-                  constraints: BoxConstraints(maxWidth: 280.w),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.only(
-                      topLeft: Radius.circular(4.r),
-                      topRight: Radius.circular(16.r),
-                      bottomLeft: Radius.circular(16.r),
-                      bottomRight: Radius.circular(16.r),
+                // 文字回复气泡（greeting 用专门的可点击版本）
+                if (intent == 'greeting')
+                  _buildGreetingBubble()
+                else
+                  Container(
+                    padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 10.h),
+                    constraints: BoxConstraints(maxWidth: 280.w),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.only(
+                        topLeft: Radius.circular(4.r),
+                        topRight: Radius.circular(16.r),
+                        bottomLeft: Radius.circular(16.r),
+                        bottomRight: Radius.circular(16.r),
+                      ),
+                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 6, offset: const Offset(0, 2))],
                     ),
-                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 6, offset: const Offset(0, 2))],
+                    child: Text(content, style: TextStyle(fontSize: 14.sp, color: Colors.grey[800], height: 1.5)),
                   ),
-                  child: Text(content, style: TextStyle(fontSize: 14.sp, color: Colors.grey[800], height: 1.5)),
-                ),
 
                 // 操作卡片（根据 intent 显示）
                 if (intent == 'study_plan' && action.isNotEmpty) ...[
@@ -275,7 +392,10 @@ class _XiaoNuanScreenState extends State<XiaoNuanScreen> {
                   SizedBox(height: 8.h),
                   _AccountingCard(action: action, onConfirm: _onConfirmAccounting),
                 ],
-                if (intent == 'period' && action.isNotEmpty) ...[
+                // 暖圈关怀建议卡仅对女性用户展示
+                if (intent == 'period' &&
+                    action.isNotEmpty &&
+                    Get.find<AppController>().userGender.value == 'female') ...[
                   SizedBox(height: 8.h),
                   _PeriodAdviceCard(action: action),
                 ],
@@ -292,12 +412,9 @@ class _XiaoNuanScreenState extends State<XiaoNuanScreen> {
     return Padding(
       padding: EdgeInsets.only(bottom: 12.h),
       child: Row(children: [
-        Container(
-          width: 32.w, height: 32.w,
-          decoration: BoxDecoration(color: Theme.of(context).primaryColor, shape: BoxShape.circle),
-          child: Center(child: Text('暖', style: TextStyle(color: Colors.white, fontSize: 12.sp, fontWeight: FontWeight.bold))),
-        ),
-        SizedBox(width: 8.w),
+        // 正在生成回复 —— speaking 状态，节奏明显加快
+        _XiaoNuanAvatar(size: 32.w, fontSize: 12, isSpeaking: true),
+        SizedBox(width: 4.w),
         Container(
           padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
           decoration: BoxDecoration(
@@ -314,6 +431,321 @@ class _XiaoNuanScreenState extends State<XiaoNuanScreen> {
   }
 
   // 底部输入栏
+  // ── 历史对话 Drawer ────────────────────────────────────────
+  Widget _buildHistoryDrawer(ThemeData theme) {
+    final primary = theme.primaryColor;
+    return Drawer(
+      backgroundColor: const Color(0xFFFAFAFB),
+      child: SafeArea(
+        child: Column(
+          children: [
+            // Drawer 顶栏
+            Padding(
+              padding: EdgeInsets.fromLTRB(16.w, 14.h, 8.w, 6.h),
+              child: Row(
+                children: [
+                  Text(
+                    '聊天历史',
+                    style: TextStyle(
+                      fontSize: 15.sp,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF111827),
+                    ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    tooltip: '新对话',
+                    icon: Icon(Icons.add_comment_outlined,
+                        color: primary),
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                      _startNewConversation();
+                    },
+                  ),
+                ],
+              ),
+            ),
+            Divider(height: 1.h, color: Colors.grey.shade100),
+            // 列表
+            Expanded(
+              child: _conversations.isEmpty
+                  ? Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(24.w),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.forum_outlined,
+                                size: 36.sp,
+                                color: Colors.grey[300]),
+                            SizedBox(height: 10.h),
+                            Text(
+                              '还没有历史对话\n聊一下就会出现在这里',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                  fontSize: 12.sp,
+                                  color: Colors.grey[400],
+                                  height: 1.5),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  : ListView.separated(
+                      padding: EdgeInsets.symmetric(vertical: 6.h),
+                      itemCount: _conversations.length,
+                      separatorBuilder: (_, __) => Divider(
+                          height: 1, color: Colors.grey.shade100),
+                      itemBuilder: (ctx, i) {
+                        final c = _conversations[i];
+                        final isCurrent = c['id'] == _currentConvId;
+                        return ListTile(
+                          dense: true,
+                          leading: CircleAvatar(
+                            radius: 16.r,
+                            backgroundColor: isCurrent
+                                ? primary
+                                : primary.withOpacity(0.18),
+                            child: Icon(
+                              Icons.chat_bubble_outline,
+                              size: 14.sp,
+                              color: isCurrent
+                                  ? Colors.white
+                                  : primary,
+                            ),
+                          ),
+                          title: Text(
+                            c['title'] as String,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 13.sp,
+                              fontWeight: isCurrent
+                                  ? FontWeight.w600
+                                  : FontWeight.normal,
+                              color: const Color(0xFF111827),
+                            ),
+                          ),
+                          subtitle: Text(
+                            _relativeTime(c['updatedAt'] as String?),
+                            style: TextStyle(
+                                fontSize: 10.sp,
+                                color: Colors.grey[400]),
+                          ),
+                          trailing: IconButton(
+                            tooltip: '删除',
+                            icon: Icon(Icons.delete_outline,
+                                size: 16.sp,
+                                color: Colors.grey[400]),
+                            onPressed: () => _confirmDelete(
+                                c['id'] as String,
+                                c['title'] as String),
+                          ),
+                          onTap: () => _resumeConversation(c),
+                        );
+                      },
+                    ),
+            ),
+            // 底部说明
+            Padding(
+              padding: EdgeInsets.all(12.w),
+              child: Text(
+                '最多保留 $_maxConvs 条最近对话',
+                style: TextStyle(
+                    fontSize: 10.sp, color: Colors.grey[400]),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 把 ISO 时间转成"今天 14:23"/"昨天"/"3 天前"格式
+  String _relativeTime(String? iso) {
+    if (iso == null) return '';
+    try {
+      final t = DateTime.parse(iso);
+      final now = DateTime.now();
+      final diff = now.difference(t);
+      if (diff.inMinutes < 1) return '刚刚';
+      if (diff.inHours < 1) return '${diff.inMinutes} 分钟前';
+      if (now.year == t.year &&
+          now.month == t.month &&
+          now.day == t.day) {
+        return '今天 '
+            '${t.hour.toString().padLeft(2, '0')}:'
+            '${t.minute.toString().padLeft(2, '0')}';
+      }
+      final yest =
+          DateTime(now.year, now.month, now.day - 1);
+      if (t.isAfter(yest)) return '昨天';
+      if (diff.inDays < 7) return '${diff.inDays} 天前';
+      return '${t.month}月${t.day}日';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  void _confirmDelete(String id, String title) {
+    Get.dialog(AlertDialog(
+      title: const Text('删除这条对话？'),
+      content: Text(
+        '"$title"\n删除后不可恢复',
+        style: TextStyle(fontSize: 12.sp, color: Colors.grey[600]),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Get.back(), child: const Text('取消')),
+        TextButton(
+          onPressed: () {
+            _deleteConversation(id);
+            Get.back();
+          },
+          child: const Text('删除', style: TextStyle(color: Colors.red)),
+        ),
+      ],
+    ));
+  }
+
+  /// 一键发送预设 prompt，跳过手打
+  Future<void> _sendQuickPrompt(String text) async {
+    if (_loading) return;
+    _inputCtrl.text = text;
+    await _sendMessage();
+  }
+
+  /// 问候气泡 —— 每条建议行直接可点击发送
+  Widget _buildGreetingBubble() {
+    final primary = Theme.of(context).primaryColor;
+    final isFemale =
+        Get.find<AppController>().userGender.value == 'female';
+
+    final lines = <Map<String, dynamic>>[
+      {
+        'emoji': '📝',
+        'title': '生成学习计划',
+        'hint': '告诉我学什么、学几天',
+        'prompt': '帮我生成学习计划',
+      },
+      {
+        'emoji': '💰',
+        'title': '帮你记一笔账',
+        'hint': '说"花了 xx 元买 xx"',
+        'prompt': '帮我记一笔账',
+      },
+      if (isFemale)
+        {
+          'emoji': '🌙',
+          'title': '暖圈关怀建议',
+          'hint': '问我"现在状态适合学习吗"',
+          'prompt': '现在状态适合学习吗',
+        },
+    ];
+
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
+      constraints: BoxConstraints(maxWidth: 280.w),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(4.r),
+          topRight: Radius.circular(16.r),
+          bottomLeft: Radius.circular(16.r),
+          bottomRight: Radius.circular(16.r),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 开场白
+          Padding(
+            padding: EdgeInsets.only(left: 2.w, bottom: 8.h),
+            child: Text(
+              '你好呀～我是小暖 🌸 点一下下面任意一条就能开始：',
+              style: TextStyle(
+                fontSize: 13.5.sp,
+                color: Colors.grey[800],
+                height: 1.5,
+              ),
+            ),
+          ),
+          // 可点击的建议行
+          ...lines.map((l) => Padding(
+                padding: EdgeInsets.only(bottom: 6.h),
+                child: GestureDetector(
+                  onTap: () => _sendQuickPrompt(l['prompt'] as String),
+                  child: Container(
+                    padding: EdgeInsets.symmetric(
+                        horizontal: 10.w, vertical: 8.h),
+                    decoration: BoxDecoration(
+                      color: primary.withOpacity(0.07),
+                      borderRadius: BorderRadius.circular(10.r),
+                      border: Border.all(
+                          color: primary.withOpacity(0.18)),
+                    ),
+                    child: Row(
+                      children: [
+                        Text(l['emoji'] as String,
+                            style: TextStyle(fontSize: 16.sp)),
+                        SizedBox(width: 8.w),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment:
+                                CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                l['title'] as String,
+                                style: TextStyle(
+                                  fontSize: 13.sp,
+                                  fontWeight: FontWeight.w600,
+                                  color: const Color(0xFF111827),
+                                ),
+                              ),
+                              SizedBox(height: 1.h),
+                              Text(
+                                l['hint'] as String,
+                                style: TextStyle(
+                                  fontSize: 11.sp,
+                                  color: Colors.grey[500],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Icon(
+                          Icons.arrow_forward_rounded,
+                          size: 14.sp,
+                          color: primary.withOpacity(0.55),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              )),
+          // 收尾语
+          Padding(
+            padding: EdgeInsets.only(top: 4.h, left: 2.w),
+            child: Text(
+              '或直接在下面输入也行',
+              style: TextStyle(
+                fontSize: 11.sp,
+                color: Colors.grey[400],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildInputBar(ThemeData theme) {
     return Container(
       padding: EdgeInsets.fromLTRB(12.w, 8.h, 12.w, 16.h),
@@ -653,7 +1085,7 @@ class _AccountingCardState extends State<_AccountingCard> {
 }
 
 // ──────────────────────────────────────────────────────────────
-// 生理期建议卡（只展示）
+// 暖圈关怀建议卡（只展示）
 // ──────────────────────────────────────────────────────────────
 class _PeriodAdviceCard extends StatelessWidget {
   final Map<String, dynamic> action;
@@ -737,6 +1169,114 @@ class _DotState extends State<_Dot> with SingleTickerProviderStateMixin {
           decoration: BoxDecoration(
             color: Colors.grey[400],
             shape: BoxShape.circle,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ──────────────────────────────────────────────────────────────
+// 小暖头像：纯呼吸效果，无装饰点。
+//
+// 关键设计：相位用 DateTime.now().millisecondsSinceEpoch 计算，
+// 多个实例（顶栏 / 历史消息 / typing 指示器）天然同步。
+//
+// 闲置：周期 2400ms，scale 1.0 ↔ 1.06
+// 说话：周期 800ms，scale 1.0 ↔ 1.14 + 主圆外加发光投影
+//
+// 跟悬浮球的"Lissajous 漂动 + 动量光晕"明显不同：这里只在原地呼吸。
+// ──────────────────────────────────────────────────────────────
+class _XiaoNuanAvatar extends StatefulWidget {
+  final double size;
+  final bool isSpeaking;
+  final double fontSize;
+
+  const _XiaoNuanAvatar({
+    required this.size,
+    this.isSpeaking = false,
+    this.fontSize = 12,
+  });
+
+  @override
+  State<_XiaoNuanAvatar> createState() => _XiaoNuanAvatarState();
+}
+
+class _XiaoNuanAvatarState extends State<_XiaoNuanAvatar>
+    with SingleTickerProviderStateMixin {
+  late final Ticker _ticker;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker = createTicker((_) {
+      if (mounted) setState(() {});
+    })..start();
+  }
+
+  @override
+  void dispose() {
+    _ticker.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final primary = Theme.of(context).primaryColor;
+    final speaking = widget.isSpeaking;
+
+    // 关键：用绝对时间算相位，所有 _XiaoNuanAvatar 实例自然同步
+    final ms = DateTime.now().millisecondsSinceEpoch;
+    final periodMs = speaking ? 800 : 2400;
+    final phase = (ms % periodMs) / periodMs; // 0..1, 全局同步
+    final amp = speaking ? 0.14 : 0.06;
+    final breath = 1.0 + amp * (0.5 - 0.5 * cos(phase * 2 * pi));
+
+    return Transform.scale(
+      scale: breath,
+      child: Container(
+        width: widget.size,
+        height: widget.size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: RadialGradient(
+            center: const Alignment(-0.3, -0.3),
+            radius: 1.0,
+            colors: [
+              Color.lerp(Colors.white, primary, 0.55)!,
+              primary,
+            ],
+            stops: const [0.0, 1.0],
+          ),
+          boxShadow: speaking
+              ? [
+                  BoxShadow(
+                    color: primary.withOpacity(0.45),
+                    blurRadius: 12,
+                    spreadRadius: 1,
+                  ),
+                ]
+              : [
+                  BoxShadow(
+                    color: primary.withOpacity(0.18),
+                    blurRadius: 6,
+                  ),
+                ],
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          '暖',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: widget.fontSize.sp,
+            fontWeight: FontWeight.bold,
+            shadows: const [
+              Shadow(
+                color: Color(0x44000000),
+                blurRadius: 2,
+                offset: Offset(0, 1),
+              ),
+            ],
           ),
         ),
       ),

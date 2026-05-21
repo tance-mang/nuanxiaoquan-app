@@ -27,11 +27,18 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7天
     
-    # 豆包AI配置
-    DOUBAO_ACCESS_KEY: str = "your_doubao_ak"
-    DOUBAO_SECRET_KEY: str = "your_doubao_sk"
-    DOUBAO_ENDPOINT: str = "maas-api.ml-platform-cn-beijing.volces.com"
-    DOUBAO_MODEL: str = "doubao-pro-32k"
+    # 豆包AI配置（火山引擎方舟 v3，兼容 OpenAI 格式）
+    # API Key 形如 ark-xxxxxxxx，对应"火山引擎-方舟平台-API Key 管理"
+    # 模型 ID 取自 https://www.volcengine.com/docs/82379/1330310
+    ARK_API_KEY: str = "ark-c3409235-6b79-4db3-935b-3eb989211a26-a0ada"
+    ARK_BASE_URL: str = "https://ark.cn-beijing.volces.com/api/v3"
+    ARK_MODEL: str = "doubao-1-5-pro-256k-250115"
+
+    # 旧字段保留兜底（避免依赖它的代码报 AttributeError），新代码请用 ARK_*
+    DOUBAO_ACCESS_KEY: str = ""
+    DOUBAO_SECRET_KEY: str = ""
+    DOUBAO_ENDPOINT: str = ""
+    DOUBAO_MODEL: str = ""
     
     # 阿里云OSS配置
     OSS_ACCESS_KEY_ID: str = "your_oss_ak"

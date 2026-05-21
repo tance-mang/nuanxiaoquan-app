@@ -3,8 +3,8 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../controllers/app_controller.dart';
+import '../services/proactive_companion.dart';
 
 // 小暖当前的情绪状态
 enum _Mood { idle, shy, dormant }
@@ -27,10 +27,14 @@ class _AiFloatButtonState extends State<AiFloatButton>
   // ── 情绪 ──────────────────────────────────────────────────────────
   _Mood _mood = _Mood.idle;
 
-  // ── 问候气泡 ──────────────────────────────────────────────────────
+  // ── 主动气泡（每日 opener + 切 tab 上下文，统一通道）────────────
   bool _showGreeting = false;
+  String _greetingText = '';
   late AnimationController _greetingCtrl;
   late Animation<double> _greetingOpacity;
+  Timer? _greetingDismissTimer;
+  // 监听 AppController.companionBubbleSeq 变化的 worker
+  Worker? _companionWorker;
 
   // ── 呼吸动画（1.0 ↔ 1.08，2.5s 一循环）────────────────────────────
   late AnimationController _breatheCtrl;
@@ -53,6 +57,10 @@ class _AiFloatButtonState extends State<AiFloatButton>
   double _squishStartY = 1.0;
   late AnimationController _squishCtrl;
 
+  // ── 拖拽近期能量（用于动量光晕：动了亮，停了暗）────────────────
+  double _lastDragSpeed = 0;
+  DateTime _lastDragTime = DateTime.fromMillisecondsSinceEpoch(0);
+
   final _appCtrl = Get.find<AppController>();
 
   // ─────────────────────────────────────────────────────────────────
@@ -63,7 +71,13 @@ class _AiFloatButtonState extends State<AiFloatButton>
     _breatheCtrl.repeat(reverse: true);
     _floatCtrl.repeat(reverse: true);
     _startDormantTimer();
-    _checkDailyGreeting();
+    _checkDailyOpener();
+
+    // 监听跨 widget 触发的"小暖讲一句" —— 比如切到某个 Tab 时
+    _companionWorker = ever<int>(_appCtrl.companionBubbleSeq, (_) {
+      final text = _appCtrl.companionBubbleText;
+      if (text.isNotEmpty) _showBubble(text);
+    });
   }
 
   void _initAnims() {
@@ -122,26 +136,38 @@ class _AiFloatButtonState extends State<AiFloatButton>
     _startDormantTimer();
   }
 
-  // ── 每日问候气泡 ──────────────────────────────────────────────────
-  Future<void> _checkDailyGreeting() async {
+  // ── 每日首次打开问候（按北京时间 0:00 分日）────────────────────
+  // 由 ProactiveCompanion 内部判定，今日已问候过则返回 null
+  Future<void> _checkDailyOpener() async {
     if (!_appCtrl.showDailyGreeting.value) return;
-    final prefs = await SharedPreferences.getInstance();
-    final today = DateTime.now().toIso8601String().substring(0, 10);
-    if ((prefs.getString('last_greeting_day') ?? '') == today) return;
-    await Future.delayed(const Duration(seconds: 1));
+    await Future.delayed(const Duration(milliseconds: 900));
     if (!mounted) return;
-    setState(() => _showGreeting = true);
-    _greetingCtrl.forward();
-    await prefs.setString('last_greeting_day', today);
-    await Future.delayed(const Duration(seconds: 3));
-    if (!mounted) return;
-    await _greetingCtrl.reverse();
-    if (mounted) setState(() => _showGreeting = false);
+    final text = await ProactiveCompanion.dailyOpener();
+    if (text == null || !mounted) return;
+    _showBubble(text);
+  }
+
+  // ── 统一的"小暖说一句"气泡通道 ───────────────────────────────
+  // 显示 5 秒后淡出。再次触发会取消上次的定时器。
+  void _showBubble(String text) {
+    _greetingDismissTimer?.cancel();
+    setState(() {
+      _greetingText = text;
+      _showGreeting = true;
+    });
+    _greetingCtrl.forward(from: 0);
+    _greetingDismissTimer = Timer(const Duration(seconds: 5), () async {
+      if (!mounted) return;
+      await _greetingCtrl.reverse();
+      if (mounted) setState(() => _showGreeting = false);
+    });
   }
 
   @override
   void dispose() {
     _dormantTimer?.cancel();
+    _greetingDismissTimer?.cancel();
+    _companionWorker?.dispose();
     _greetingCtrl.dispose();
     _breatheCtrl.dispose();
     _floatCtrl.dispose();
@@ -172,6 +198,9 @@ class _AiFloatButtonState extends State<AiFloatButton>
       _dragSX = (1.0 + hRatio * speed * 0.022).clamp(0.82, 1.45);
       _dragSY = (1.0 - hRatio * speed * 0.014).clamp(0.72, 1.0);
       _dragging = true;
+      // 记录拖拽速度供光晕使用
+      _lastDragSpeed = speed;
+      _lastDragTime = DateTime.now();
     });
   }
 
@@ -214,7 +243,9 @@ class _AiFloatButtonState extends State<AiFloatButton>
                   ],
                 ),
                 child: Text(
-                  '我是你的专属助手小暖，随时帮你规划学习、整理生活～',
+                  _greetingText.isEmpty
+                      ? '我在这。'
+                      : _greetingText,
                   style: TextStyle(fontSize: 12.sp, color: Colors.grey[700]),
                 ),
               ),
@@ -241,11 +272,29 @@ class _AiFloatButtonState extends State<AiFloatButton>
                 final breatheMult = isDormant ? 0.25 : 1.0;
                 final breatheScale = 1.0 + _breatheCtrl.value * 0.08 * breatheMult;
 
-                // ── 漂浮偏移（Lissajous 弧线）────────────────────
+                // ── 漂浮偏移（Lissajous 弧线，幅度加大让"波动"看得见）────
                 final ft = _floatCtrl.value;
                 final floatMult = isDormant ? 0.3 : 1.0;
-                final floatX = sin(ft * pi) * 3.0 * floatMult;
-                final floatY = sin(ft * 2 * pi) * 2.5 * floatMult;
+                final floatX = sin(ft * pi) * 8.0 * floatMult;
+                final floatY = sin(ft * 2 * pi) * 6.0 * floatMult;
+
+                // ── 动量光晕：基于当前漂浮速度 + 拖拽近期速度 ──────
+                // 自然 Lissajous 速度的解析导数
+                final natVx = cos(ft * pi) * pi * 8.0 * floatMult;
+                final natVy = cos(ft * 2 * pi) * 2 * pi * 6.0 * floatMult;
+                final natSpeed =
+                    sqrt(natVx * natVx + natVy * natVy) / 45.0; // 归一化 ~0..1
+                // 拖拽能量：300ms 半衰期，停手即消散
+                final dragMs = DateTime.now()
+                    .difference(_lastDragTime)
+                    .inMilliseconds
+                    .toDouble();
+                final dragDecay = (1.0 - (dragMs / 600).clamp(0.0, 1.0));
+                final dragEnergy =
+                    (_lastDragSpeed / 30.0).clamp(0.0, 1.0) * dragDecay;
+                // 综合动量：拖拽优先（用户主动操作），再叠加自然漂浮
+                final motionEnergy =
+                    (max(dragEnergy, natSpeed * 0.65)).clamp(0.0, 1.0);
 
                 // ── 害羞点击动画 ──────────────────────────────────
                 double tapScale = 1.0;
@@ -303,38 +352,55 @@ class _AiFloatButtonState extends State<AiFloatButton>
                     height: 70.w,
                     child: Stack(
                       alignment: Alignment.center,
+                      clipBehavior: Clip.none, // 允许点击 ring/光晕扩散到 70w 框外
                       children: [
-                        // ── 外圈闪光（点击时）───────────────────
-                        if (ringOpacity > 0.01)
-                          Transform.scale(
-                            scale: ringScaleV,
-                            child: Container(
-                              width: 52.w,
-                              height: 52.w,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: primary.withOpacity(ringOpacity),
-                                  width: 2.5,
-                                ),
-                              ),
-                            ),
-                          ),
-
-                        // ── 外层柔光晕（待机常亮）─────────────
-                        Opacity(
-                          opacity: isDormant ? 0.12 : 0.22,
-                          child: Container(
-                            width: 58.w,
-                            height: 58.w,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: primary.withOpacity(0.35),
+                        // ── 动量光晕（最底层）：球动了就亮大、停了就暗小 ─────
+                        // 不是扩散环（避免和计时器涟漪混），而是单层放射光
+                        Container(
+                          width: 52.w * (1.0 + motionEnergy * 0.55),
+                          height: 52.w * (1.0 + motionEnergy * 0.55),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: RadialGradient(
+                              colors: [
+                                primary.withOpacity(
+                                    isDormant ? 0.04 : 0.10 + motionEnergy * 0.30),
+                                primary.withOpacity(
+                                    isDormant ? 0.02 : 0.04 + motionEnergy * 0.18),
+                                primary.withOpacity(0.0),
+                              ],
+                              stops: const [0.0, 0.55, 1.0],
                             ),
                           ),
                         ),
 
-                        // ── 球体主体 ─────────────────────────
+                        // ── 点击瞬时 flash 环（覆盖动量光晕之上，明显反馈）─────
+                        // 加粗到 3.5w + 放大到 60w 起点，同时叠加柔光让"啪"的反馈更强
+                        if (ringOpacity > 0.01)
+                          Transform.scale(
+                            scale: ringScaleV,
+                            child: Container(
+                              width: 60.w,
+                              height: 60.w,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: primary.withOpacity(ringOpacity),
+                                  width: 3.5,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: primary.withOpacity(
+                                        ringOpacity * 0.45),
+                                    blurRadius: 14,
+                                    spreadRadius: 1,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+
+                        // ── 球体主体（多层渲染：底色 + 边缘暗 + 环境反射 + 镜面高光）
                         Transform(
                           alignment: Alignment.center,
                           transform: Matrix4.diagonal3Values(
@@ -343,28 +409,66 @@ class _AiFloatButtonState extends State<AiFloatButton>
                             width: 52.w,
                             height: 52.w,
                             decoration: BoxDecoration(
-                              gradient: RadialGradient(
-                                center: const Alignment(-0.35, -0.38),
-                                radius: 0.88,
-                                colors: [
-                                  // 左上高光，让球有立体感
-                                  Color.lerp(Colors.white, primary, 0.42)!,
-                                  primary,
-                                  Color.lerp(primary, Colors.black, 0.15)!,
-                                ],
-                                stops: const [0.0, 0.6, 1.0],
-                              ),
                               shape: BoxShape.circle,
+                              // 主底色：径向渐变模拟体积
+                              gradient: RadialGradient(
+                                center: const Alignment(-0.32, -0.35),
+                                radius: 1.05,
+                                colors: [
+                                  Color.lerp(Colors.white, primary, 0.35)!,
+                                  primary,
+                                  Color.lerp(primary, Colors.black, 0.28)!,
+                                ],
+                                stops: const [0.0, 0.55, 1.0],
+                              ),
+                              // 多层阴影：紧贴的暗影 + 中等模糊主投影 + 远处柔光
                               boxShadow: [
+                                // 紧贴硬边阴影（接触感）
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.18 *
+                                      (1 - dormT * 0.6)),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 2),
+                                ),
+                                // 主投影
                                 BoxShadow(
                                   color: primary.withOpacity(shadowAlpha),
-                                  blurRadius: 14,
-                                  offset: const Offset(0, 5),
+                                  blurRadius: 18,
+                                  offset: const Offset(0, 7),
+                                ),
+                                // 远柔光（让球有"飘起来"的感觉）
+                                BoxShadow(
+                                  color: primary.withOpacity(
+                                      0.18 * (1 - dormT * 0.6)),
+                                  blurRadius: 30,
+                                  spreadRadius: 2,
+                                  offset: const Offset(0, 12),
                                 ),
                               ],
                             ),
                             child: Stack(
+                              clipBehavior: Clip.hardEdge,
                               children: [
+                                // 底部环境反射（rim light）：
+                                // 模拟来自下方暖光向上反弹的微亮，使球体不"贴底"
+                                Positioned.fill(
+                                  child: DecoratedBox(
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      gradient: RadialGradient(
+                                        center: const Alignment(0.0, 1.05),
+                                        radius: 0.85,
+                                        colors: [
+                                          Color.lerp(Colors.white, primary, 0.55)!
+                                              .withOpacity(0.55),
+                                          Colors.transparent,
+                                        ],
+                                        stops: const [0.0, 1.0],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+
                                 // 犯困遮暗层
                                 if (dimOpacity > 0.01)
                                   Container(
@@ -373,6 +477,7 @@ class _AiFloatButtonState extends State<AiFloatButton>
                                       color: Colors.black.withOpacity(dimOpacity),
                                     ),
                                   ),
+
                                 // 文字：有形变 + 下坠
                                 Center(
                                   child: Transform.translate(
@@ -388,8 +493,57 @@ class _AiFloatButtonState extends State<AiFloatButton>
                                           fontSize: 13.sp,
                                           fontWeight: FontWeight.bold,
                                           height: 1.2,
+                                          shadows: const [
+                                            // 文字微投影，与球体融合
+                                            Shadow(
+                                              color: Color(0x55000000),
+                                              blurRadius: 2,
+                                              offset: Offset(0, 1),
+                                            ),
+                                          ],
                                         ),
                                       ),
+                                    ),
+                                  ),
+                                ),
+
+                                // 镜面高光（specular）：左上椭圆，让球更"有光泽"
+                                Positioned(
+                                  left: 9.w,
+                                  top: 7.w,
+                                  child: Transform.rotate(
+                                    angle: -0.45,
+                                    child: Container(
+                                      width: 18.w,
+                                      height: 9.w,
+                                      decoration: BoxDecoration(
+                                        borderRadius:
+                                            BorderRadius.circular(20.r),
+                                        gradient: LinearGradient(
+                                          begin: Alignment.topCenter,
+                                          end: Alignment.bottomCenter,
+                                          colors: [
+                                            Colors.white.withOpacity(
+                                                isDormant ? 0.18 : 0.55),
+                                            Colors.white.withOpacity(0.0),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+
+                                // 第二个微高光：右上小亮点，提升金属/玻璃质感
+                                Positioned(
+                                  right: 12.w,
+                                  top: 14.w,
+                                  child: Container(
+                                    width: 4.w,
+                                    height: 4.w,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: Colors.white.withOpacity(
+                                          isDormant ? 0.10 : 0.45),
                                     ),
                                   ),
                                 ),
