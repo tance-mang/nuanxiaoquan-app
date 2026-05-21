@@ -1,4 +1,4 @@
-\# 暖小圈 · WarmCircle
+\# 暖小圈
 
 \### 基于状态感知的智能学习行为调节系统｜State-Aware Adaptive Learning System
 
