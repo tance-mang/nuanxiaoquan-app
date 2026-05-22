@@ -5,6 +5,7 @@ import '../services/api_service.dart';
 import '../services/strength_engine.dart';
 import '../services/hitokoto_service.dart';
 import '../services/cycle_phase_knowledge.dart';
+import '../services/proactive_companion.dart';
 import '../controllers/app_controller.dart';
 import '../widgets/tap_scale.dart';
 
@@ -522,6 +523,17 @@ class _KnowledgeScreenState extends State<KnowledgeScreen>
       'prefill_content': body,
       'source_screen': 'knowledge',
     });
+    // 小暖傲娇式提醒：别只收藏不读
+    _notifyCompanion('resource_collected');
+  }
+
+  /// 通过悬浮球冒泡通道触发小暖一句话（频次由 ProactiveCompanion 兜底）
+  Future<void> _notifyCompanion(String eventKey) async {
+    final text = await ProactiveCompanion.eventMessage(eventKey);
+    if (text == null) return;
+    if (Get.isRegistered<AppController>()) {
+      Get.find<AppController>().tellCompanion(text);
+    }
   }
 
   // ══ 存知 Tab ══════════════════════════════════════════════

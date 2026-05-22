@@ -17,6 +17,8 @@ import 'package:flutter/scheduler.dart' show Ticker;
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../controllers/app_controller.dart';
+import '../services/proactive_companion.dart';
 import '../services/strength_engine.dart';
 import '../widgets/judge_hint_bar.dart';
 
@@ -171,6 +173,18 @@ class StudyRoomController extends GetxController {
     // 主动暂停 = 一次中断（用作行为系数）；非运行→暂停（按钮已禁用）不算
     if (wasRunning) {
       StrengthEngine.recordInterrupt();
+      // 小暖观察：中断了说一句（频次保护交给 ProactiveCompanion）
+      _maybeNotifyCompanion('pomodoro_interrupted');
+    }
+  }
+
+  /// 通过悬浮球冒泡通道，让小暖针对自习室事件主动开口。
+  /// ProactiveCompanion 内部按"每事件每日 1 次"+ 全天上限保护频率。
+  Future<void> _maybeNotifyCompanion(String eventKey) async {
+    final text = await ProactiveCompanion.eventMessage(eventKey);
+    if (text == null) return;
+    if (Get.isRegistered<AppController>()) {
+      Get.find<AppController>().tellCompanion(text);
     }
   }
 
@@ -186,6 +200,8 @@ class StudyRoomController extends GetxController {
   void _onTimerComplete() {
     // 弹反馈对话框收集"轻松/一般/有点难"，用于下次系统调整
     _showEndOfStudyFeedback();
+    // 小暖观察：完成一段，让悬浮球冒一句
+    _maybeNotifyCompanion('pomodoro_done');
   }
 
   void _showEndOfStudyFeedback() {

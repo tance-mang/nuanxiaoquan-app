@@ -4,6 +4,8 @@
 // 相当于房子的大门，所有功能都从这里进入
 // ============================================================
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart'; // 屏幕尺寸适配库，让手机大小不同显示一样
 import 'package:get/get.dart';                               // GetX：状态管理 + 路由跳转 + 依赖注入 三合一
@@ -26,6 +28,7 @@ import 'controllers/app_controller.dart';
 import 'screens/study_room_screen.dart';
 import 'screens/interest_prefs_screen.dart';
 import 'services/behavior_tracker.dart';
+import 'services/push_notification_service.dart';
 
 // ============================================================
 // main函数：程序的起点，async 表示里面有需要等待的操作
@@ -43,6 +46,12 @@ void main() async {
   Get.put(StudyRoomController(), tag: StudyRoomController.roomTag, permanent: true);
   // 行为感知 & 主动干预（idle 检测 + 微休息弹窗）
   Get.put(BehaviorTracker(), permanent: true);
+
+  // 本地推送：初始化通道 + 排小暖早晚陪伴（按北京时间 07:30 / 21:30）
+  // 失败不阻塞 App 启动
+  unawaited(PushNotificationService().init().then((_) {
+    return PushNotificationService().scheduleCompanionDailyPushes();
+  }));
 
   runApp(const WarmCircleApp());
 }

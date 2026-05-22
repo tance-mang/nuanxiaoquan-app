@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../controllers/app_controller.dart';
+import '../services/proactive_companion.dart';
 import '../widgets/tap_scale.dart';
 
 class AccountingScreen extends StatefulWidget {
@@ -38,6 +40,25 @@ class _AccountingScreenState extends State<AccountingScreen> {
   Future<void> _save() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_key, jsonEncode(_records));
+  }
+
+  /// 让小暖根据新增的这笔账主动开口（频次保护交给 ProactiveCompanion）
+  ///   - 默认走"accounting_added"，傲娇但克制；
+  ///   - 若本月支出占总收入 > 85%，升级为"accounting_over_budget"。
+  Future<void> _notifyCompanionOnAdd({required bool isExpense}) async {
+    if (!Get.isRegistered<AppController>()) return;
+    final ctrl = Get.find<AppController>();
+
+    String eventKey = 'accounting_added';
+    if (isExpense && _totalIncome > 0) {
+      final ratio = _totalExpense / _totalIncome;
+      if (ratio >= 0.85) {
+        eventKey = 'accounting_over_budget';
+      }
+    }
+    final text = await ProactiveCompanion.eventMessage(eventKey);
+    if (text == null) return;
+    ctrl.tellCompanion(text);
   }
 
   double get _totalIncome => _records
@@ -215,6 +236,8 @@ class _AccountingScreenState extends State<AccountingScreen> {
                   });
                   _save();
                   Get.back();
+                  // 小暖观察：新增一笔 → 看是否触发"超预算"傲娇提醒
+                  _notifyCompanionOnAdd(isExpense: isExpense);
                 },
                 child: const Text('记录'),
               ),
